@@ -1,0 +1,246 @@
+/* Ultra terminal theme: black background, Ultra-purple monospace, fills
+   the browser tab exactly (no fixed max-width) and scales with it via
+   clamp()-based type sizing instead of fixed breakpoints. */
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #000000;
+  --accent: #6f3de0;
+  --accent-dim: #3d2178;
+  --accent-bright: #d6c3ff;
+  --red: #ff4d4d;
+  --mono: ui-monospace, 'SFMono-Regular', 'Consolas', 'Liberation Mono', Menlo, monospace;
+}
+
+html,
+body,
+#app {
+  height: 100dvh;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: clamp(0.8rem, 0.65rem + 0.5vw, 1.05rem);
+  /* subtle CRT scanlines — decorative only, low enough contrast not to fight readability */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(111, 61, 224, 0.05) 0px,
+    rgba(111, 61, 224, 0.05) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+::selection {
+  background: var(--accent-dim);
+  color: #000;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--accent-dim);
+  border: 2px solid #000;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--accent-dim);
+  text-shadow: 0 0 4px currentColor;
+}
+
+.topbar h1 {
+  font-size: 1em;
+  margin: 0;
+  font-weight: normal;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+  /* truncate instead of wrapping, so the button never gets squeezed
+     off-row or forced to wrap onto multiple lines as the tab narrows */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.topbar h1::before {
+  content: 'guest@ultra:~$ ';
+  color: var(--accent-dim);
+}
+
+.topbar > :last-child {
+  flex-shrink: 0;
+}
+
+.account-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.account-group .account {
+  color: var(--accent-bright);
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+  min-height: 0;
+}
+
+.feed .empty {
+  color: var(--accent-dim);
+}
+
+.message-row {
+  padding: 0.1rem 0;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.message-row .time {
+  color: var(--accent-dim);
+}
+
+.message-row .addr {
+  color: var(--accent);
+  font-weight: bold;
+  margin: 0 0.35em;
+}
+
+.message-row .addr::before {
+  content: '[';
+  color: var(--accent-dim);
+  font-weight: normal;
+}
+.message-row .addr::after {
+  content: ']$';
+  color: var(--accent-dim);
+  font-weight: normal;
+}
+
+.message-row .text {
+  color: var(--accent-bright);
+  text-shadow: 0 0 3px rgba(214, 195, 255, 0.5);
+}
+
+/* Lives as the last row inside .feed (see MessageFeed's slot) so the
+   prompt reads as the next line of the same scrolling log, not a
+   separate input box below it. */
+.composer-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0;
+  line-height: 1.5;
+}
+
+.composer-line .prompt {
+  color: var(--accent-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.composer-line .cursor {
+  color: var(--accent);
+  animation: blink 1s steps(1) infinite;
+}
+
+.composer-line .prompt-disconnected {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-line input[type='text'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 1em;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent-bright);
+  caret-color: var(--accent);
+  outline: none;
+}
+
+/* while empty, the decorative .cursor glyph is the only cursor shown —
+   suppress the native caret so the two don't blink side by side */
+.composer-line input[type='text'].caret-hidden {
+  caret-color: transparent;
+}
+
+button {
+  font-family: inherit;
+  font-size: 1em;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--accent-dim);
+  background: transparent;
+  color: var(--accent);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: #000;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.error-banner {
+  color: var(--red);
+  padding: 0.25rem 1rem;
+  font-size: 0.9em;
+}
+
+.error-banner::before {
+  content: '! ';
+}
+
+/* Send-time errors: rendered as the last row inside .feed (see
+   MessageInput's slot), styled like a shell printing to stderr right
+   after the failed command rather than a standalone warning banner. */
+.shell-error {
+  padding: 0.1rem 0;
+  line-height: 1.5;
+  color: var(--red);
+  word-break: break-word;
+}
+
+.shell-error::before {
+  content: 'bash: ';
+}

@@ -1,0 +1,10 @@
+.env
+.env.*
+node_modules/
+dist/
+test-results/
+playwright-report/
+contracts/*/build/
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,19 @@
+{
+  "name": "chatroom-contract-tests",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "tsx": "4.7.1",
+    "@ultraos/ultratest": "file:/usr/local/lib/node_modules/@ultraos/ultratest2/src",
+    "ultratest-genesis-plugin": "file:/usr/local/lib/node_modules/@ultraos/ultratest2/src/plugins/native/genesis",
+    "ultratest-system-plugin": "file:/usr/local/lib/node_modules/@ultraos/ultratest2/src/plugins/native/system",
+    "ultratest-ultra-contracts-plugin": "file:/usr/local/lib/node_modules/@ultraos/ultratest2/src/plugins/native/ultraContracts",
+    "ultratest-ultra-startup-plugin": "file:/usr/local/lib/node_modules/@ultraos/ultratest2/src/plugins/native/ultraStartup"
+  },
+  "ultratestPlugins": {
+    "ultratest-genesis-plugin": "native",
+    "ultratest-system-plugin": "native",
+    "ultratest-ultra-contracts-plugin": "native",
+    "ultratest-ultra-startup-plugin": "native"
+  }
+}

@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.5)
+project(chatroom)
+find_package(cdt)
+include(CDTWasmToolchain)
+add_contract(chatroom chatroom ${CMAKE_CURRENT_SOURCE_DIR}/src/chatroom.cpp)
+target_include_directories(chatroom PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(chatroom PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
