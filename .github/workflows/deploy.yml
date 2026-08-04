@@ -1,0 +1,46 @@
+name: Build and deploy
+
+# Mirrors the Ultra Cloudflare Pages convention (see the bridge/wallet-ledger
+# setup): build the static SPA and publish it to the `gh-pages-prod` branch,
+# which the Terraform-managed Cloudflare Pages project (`ultra-chatroom`)
+# serves at https://chatroom.ultra.io. Cloudflare deploys automatically on any
+# push to that branch via the Cloudflare GitHub App.
+#
+# Trigger: push a `*.*.*-prod` tag (Ultra's prod-release convention), or run
+# manually from the Actions tab. A human/PAT-triggered run is required — a push
+# made with the default GITHUB_TOKEN would not re-fire this workflow.
+
+on:
+  push:
+    tags:
+      - '*.*.*-prod'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build the dapp
+        working-directory: dapp
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish dapp/dist to gh-pages-prod
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: dapp/dist
+          publish_branch: gh-pages-prod
+          force_orphan: true
