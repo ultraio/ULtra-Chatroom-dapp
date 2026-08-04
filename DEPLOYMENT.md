@@ -4,8 +4,9 @@ Steps 0–4 (local toolchain: compile, contract tests, seeded chain, Playwright
 e2e) have been **run and verified end to end** on Windows, using the public
 Docker image. Follow them in order — each one depends on the previous.
 
-Step 5 (mainnet deploy) **has been executed.** The contract is live on Ultra
-mainnet under account **`1aa2aa3aa4eo`** (code first set 2026-07-30). As of the
+Step 5 (mainnet deploy) **has been executed** and step 6 (frontend hosting on
+Cloudflare Pages) is documented but not yet stood up. The contract is live on
+Ultra mainnet under account **`1aa2aa3aa4eo`** (code first set 2026-07-30). As of the
 last check the deployed code is the **original** version — ABI exposes only the
 `messages.a` and `senders.a` tables and no actions — and both tables are empty
 (no messages posted yet). The `owner` and `active` permissions are held by the
@@ -267,6 +268,87 @@ in this doc — only the `-u` endpoint and chain ID change.
 5. **Point the dapp at it:** `dapp/src/config.ts` already sets
    `CONTRACT_ACCOUNT = '1aa2aa3aa4eo'` (the current live account). Only change
    this if you deploy to a different account — set it to that account name.
+
+## 6. Publish the frontend (Cloudflare Pages)
+
+Deploying the contract (steps 0–5) only puts the chain side live. The `dapp/`
+is a static Vue 3 + Vite SPA — `npm run build` emits `dapp/dist`, which any
+static host can serve. Ultra hosts its public front-ends on **Cloudflare
+Pages**, and this dapp fits the simplest case on that platform:
+
+- **No secrets, no build-time env.** Everything the app needs — the mainnet
+  chain id, the public RPC endpoints, the deployed `CONTRACT_ACCOUNT` — is
+  already baked into `dapp/src/config.ts` and committed. There is nothing to
+  inject at build time and no Vault/secret wiring to set up.
+- **No access gating.** This is a public dapp meant for anyone with a wallet,
+  so it is *not* put behind Cloudflare Access (unlike Ultra's internal,
+  employee-only Pages tools). It's an ordinary public site.
+- **Served at a domain root.** Vite builds with `base: '/'` and the assets in
+  `index.html` are root-relative (`/assets/...`), so the site must be served
+  from the root of its domain (e.g. `chatroom.ultra.io`), not a sub-path.
+
+Two equivalent ways to deploy it:
+
+### 6a. Cloudflare Pages Git integration (recommended)
+
+Connect the repository once in the Cloudflare dashboard (Workers & Pages →
+Create → Pages → Connect to Git), then every push to the production branch
+auto-builds and publishes:
+
+| Setting | Value |
+| --- | --- |
+| Framework preset | None / Vue |
+| Root directory | `dapp` |
+| Build command | `npm ci && npm run build` |
+| Build output directory | `dist` (i.e. `dapp/dist`) |
+| Node version | 20+ (matches the toolchain the app is built/tested on) |
+
+Add the custom domain (`chatroom.ultra.io` or similar) in the project's
+**Custom domains** tab — Cloudflare creates the CNAME. That's the whole
+production path; there's no server, database, or backend to stand up.
+
+> **One caveat carried over from other Ultra Pages deploys:** a Git-push
+> trigger only fires on *human* (or PAT/GitHub-App) pushes. Commits made with
+> a workflow's default `GITHUB_TOKEN` do **not** raise a `push` event, so if
+> you ever add a bot/cron that commits to the production branch, the deploy
+> will silently stop moving with no failed run to notice. This repo has no
+> such bot today, so a plain push trigger is safe; keep it that way, or wire
+> the deploy to the bot workflow explicitly if you add one.
+
+### 6b. Direct upload with Wrangler (no Git integration)
+
+For a one-off or fork-local deploy, build and push `dist` straight to Pages:
+
+```bash
+cd dapp
+npm ci && npm run build          # produces dapp/dist
+npx wrangler pages deploy dist --project-name=ultra-chatroom
+```
+
+`wrangler` prompts for a Cloudflare login (or reads `CLOUDFLARE_API_TOKEN` /
+`CLOUDFLARE_ACCOUNT_ID` from the environment) and prints the deployed
+`*.pages.dev` URL. Attach a custom domain afterward from the dashboard as in 6a.
+
+### 6c. Verify
+
+```bash
+curl -sI https://<your-domain>/ | head -3        # expect HTTP/2 200, content-type text/html
+```
+
+Then open it in a browser with the Ultra extension installed: connect the
+wallet, send a message, confirm it appears in the feed and that a fresh reload
+rebuilds the feed from chain reads alone (no backend, per the README).
+
+**Rollback** is a dashboard action — Pages keeps the last ~10 deployments
+(Workers & Pages → the project → Deployments → *Rollback to this deployment*),
+or `git revert` the offending commit and let CI republish.
+
+> **Ultra-internal note.** Ultra's own production Pages projects (custom
+> domain, DNS) are provisioned through the devops Terraform + Atlantis
+> pipeline rather than by hand in the dashboard; that config lives in the
+> private devops repo, not here. The dashboard/Wrangler steps above are the
+> self-contained path and are what a fork would use — the end state (a static
+> `dapp/dist` served from a domain root) is identical either way.
 
 ## RAM growth & moderation (resolved — was flagged as an open question)
 
