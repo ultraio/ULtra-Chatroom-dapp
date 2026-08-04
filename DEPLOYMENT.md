@@ -276,6 +276,14 @@ is a static Vue 3 + Vite SPA — `npm run build` emits `dapp/dist`, which any
 static host can serve. These notes use **Cloudflare Pages**; the same `dist/`
 works unchanged on Netlify, GitHub Pages, S3 + CloudFront, or any static host.
 
+**Production (this repo).** The live site is **https://chatroom.ultra.io**,
+served by Cloudflare Pages. This repo ships the deploy in
+`.github/workflows/deploy.yml`: **push a `*.*.*-prod` tag** (e.g. `1.0.0-prod`)
+and CI builds `dapp/` and publishes `dapp/dist` to the **`gh-pages-prod`**
+branch, which the Pages project serves. So a routine frontend release is just
+a new `*.*.*-prod` tag — no manual upload. The generic options below (6a/6b)
+are for setting up a fresh host or a fork.
+
 It's a plain static deploy:
 
 - **No secrets, no build-time env.** Everything the app needs — the chain id,
