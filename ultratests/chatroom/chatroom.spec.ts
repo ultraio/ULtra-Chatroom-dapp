@@ -23,7 +23,7 @@ function sleep(ms: number) {
 }
 
 export default class Test extends UltraTest {
-  requiredAccounts() { return ['alice', 'bob', 'carol', 'dave']; }
+  requiredAccounts() { return ['alice', 'bob', 'carol', 'dave', 'erin', 'mallory']; }
   nodeosConfigs() { return { config: { 'abi-serializer-max-time-ms': 100000 } }; }
 
   async onChainStart(ultra: UltraTestAPI) {
@@ -42,6 +42,8 @@ export default class Test extends UltraTest {
         await ultraAPI.token.transferTokens('ultra.eosio', 'bob', 10);
         await ultraAPI.token.transferTokens('ultra.eosio', 'carol', 10);
         await ultraAPI.token.transferTokens('ultra.eosio', 'dave', 10);
+        await ultraAPI.token.transferTokens('ultra.eosio', 'erin', 10);
+        await ultraAPI.token.transferTokens('ultra.eosio', 'mallory', 10);
       },
 
       'alice posts a message: row is written with her account, text and an id': async () => {
@@ -118,6 +120,114 @@ export default class Test extends UltraTest {
       // and the day_count assertion above proves the counter increments
       // correctly, so the remaining risk is narrow (the >= vs > boundary at
       // day_count === 50, verified by code review in chatroom.cpp).
+
+      // ---- moderation: owner-only ban / unban ----
+      // ban/unban require_auth(get_self()); the contract account is chatroom1,
+      // whose key the runner holds, so we sign as chatroom1@active. A non-owner
+      // signer must be rejected by the authority check, not by our code.
+
+      'a non-owner cannot ban (missing authority of the room account)': async () => {
+        await assertAsyncThrow(
+          ultraAPI.transactOrThrow([{
+            account: 'chatroom1', name: 'ban',
+            authorization: [{ actor: 'alice', permission: 'active' }],
+            data: { account: 'mallory' },
+          }]),
+          'missing authority');
+        const { rows } = await systemAPI.getTableRows('chatroom1', 'chatroom1', 'banned.a');
+        assert(rows.length === 0, 'the rejected ban wrote no banned.a row');
+      },
+
+      'the owner bans mallory: banned.a records her account': async () => {
+        await ultraAPI.transactOrThrow([{
+          account: 'chatroom1', name: 'ban',
+          authorization: [{ actor: 'chatroom1', permission: 'active' }],
+          data: { account: 'mallory' },
+        }]);
+        const { rows } = await systemAPI.getTableRows('chatroom1', 'chatroom1', 'banned.a');
+        assert(rows.length === 1, 'exactly one banned row');
+        assert(rows[0].account === 'mallory', 'banned.a records the banned account');
+      },
+
+      'a banned account cannot post — the transfer reverts and writes no row': async () => {
+        const before = (await systemAPI.getTableRows('chatroom1', 'chatroom1', 'messages.a')).rows.length;
+        await assertAsyncThrow(
+          ultraAPI.token.transferCustomTokens('mallory', 'chatroom1', '0.00000001 UOS', 'let me in'),
+          'banned');
+        const after = (await systemAPI.getTableRows('chatroom1', 'chatroom1', 'messages.a')).rows.length;
+        assert(after === before, 'the banned send added no message row');
+      },
+
+      'banning an already-banned account is idempotent (no duplicate, no revert)': async () => {
+        await ultraAPI.transactOrThrow([{
+          account: 'chatroom1', name: 'ban',
+          authorization: [{ actor: 'chatroom1', permission: 'active' }],
+          data: { account: 'mallory' },
+        }]);
+        const { rows } = await systemAPI.getTableRows('chatroom1', 'chatroom1', 'banned.a');
+        assert(rows.length === 1, 're-banning did not create a second row');
+      },
+
+      'banning a nonexistent account reverts': async () => {
+        await assertAsyncThrow(
+          ultraAPI.transactOrThrow([{
+            account: 'chatroom1', name: 'ban',
+            authorization: [{ actor: 'chatroom1', permission: 'active' }],
+            data: { account: 'nosuch11' },
+          }]),
+          'account does not exist');
+      },
+
+      'the room cannot ban itself': async () => {
+        await assertAsyncThrow(
+          ultraAPI.transactOrThrow([{
+            account: 'chatroom1', name: 'ban',
+            authorization: [{ actor: 'chatroom1', permission: 'active' }],
+            data: { account: 'chatroom1' },
+          }]),
+          'cannot ban the room contract itself');
+      },
+
+      'a non-owner cannot unban (missing authority)': async () => {
+        await assertAsyncThrow(
+          ultraAPI.transactOrThrow([{
+            account: 'chatroom1', name: 'unban',
+            authorization: [{ actor: 'alice', permission: 'active' }],
+            data: { account: 'mallory' },
+          }]),
+          'missing authority');
+        const { rows } = await systemAPI.getTableRows('chatroom1', 'chatroom1', 'banned.a');
+        assert(rows.length === 1, 'mallory is still banned after the rejected unban');
+      },
+
+      'the owner unbans mallory: banned.a no longer lists her': async () => {
+        await ultraAPI.transactOrThrow([{
+          account: 'chatroom1', name: 'unban',
+          authorization: [{ actor: 'chatroom1', permission: 'active' }],
+          data: { account: 'mallory' },
+        }]);
+        const { rows } = await systemAPI.getTableRows('chatroom1', 'chatroom1', 'banned.a');
+        assert(rows.length === 0, 'the ban row is removed');
+      },
+
+      'after being unbanned, the account can post again': async () => {
+        const before = (await systemAPI.getTableRows('chatroom1', 'chatroom1', 'messages.a')).rows.length;
+        await ultraAPI.token.transferCustomTokens('mallory', 'chatroom1', '0.00000001 UOS', 'gm, unbanned');
+        const { rows } = await systemAPI.getTableRows('chatroom1', 'chatroom1', 'messages.a');
+        assert(rows.length === before + 1, 'the post-unban send is accepted');
+        assert(rows[rows.length - 1].sender === 'mallory', 'newest row records mallory');
+        assert(rows[rows.length - 1].text === 'gm, unbanned', 'newest row records her text');
+      },
+
+      'unbanning an account that was never banned is a no-op (no revert)': async () => {
+        await ultraAPI.transactOrThrow([{
+          account: 'chatroom1', name: 'unban',
+          authorization: [{ actor: 'chatroom1', permission: 'active' }],
+          data: { account: 'erin' },
+        }]);
+        const { rows } = await systemAPI.getTableRows('chatroom1', 'chatroom1', 'banned.a');
+        assert(rows.length === 0, 'unbanning a non-banned account changed nothing');
+      },
     };
   }
 }
