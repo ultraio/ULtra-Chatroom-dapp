@@ -5,6 +5,7 @@ export const TOKEN_CONTRACT = 'eosio.token';
 export const UOS_SYMBOL = 'UOS';
 export const UOS_PRECISION = 8;
 export const MESSAGES_TABLE = 'messages.a';
+export const BANNED_TABLE = 'banned.a';
 
 // The minimum positive amount eosio.token::transfer allows at 8 decimals —
 // used as fixed "postage" so the user only ever has to think about the text.

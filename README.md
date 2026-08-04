@@ -3,8 +3,11 @@
 A single-room, wallet-only chat dapp. Every message is an `eosio.token::transfer`
 to a purpose-built `chatroom` contract with the message text as the memo; the
 contract records it in an onchain table. There is no backend, no database, and
-no localStorage — closing and reopening the app rebuilds the entire feed from
-chain reads alone, per `ultra-chatroom-dapp-brief.md`.
+no localStorage — closing and reopening the app rebuilds the feed from chain
+reads alone, per `ultra-chatroom-dapp-brief.md`. The contract keeps a rolling
+window of the most recent 1000 messages room-wide (older rows are pruned on
+write to bound RAM), so the rebuilt feed is that retained window, not all
+history ever sent.
 
 ## Layout
 

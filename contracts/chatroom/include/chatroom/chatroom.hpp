@@ -9,9 +9,10 @@ namespace ultra {
 using namespace eosio;
 
 // Onchain Chat Room: a message is an eosio.token transfer to this contract
-// whose memo IS the message text. No public actions — the entire surface is
-// the notify handler below. Everything the dapp needs to read is the
-// messages.a table (see 05/07 in the Ultra agent KB for the read pattern).
+// whose memo IS the message text. The message-writing surface is the notify
+// handler below; ban/unban are owner-only moderation actions. Everything the
+// dapp needs to read is the messages.a table (see 05/07 in the Ultra agent KB
+// for the read pattern), plus banned.a to hide banned senders client-side.
 class [[eosio::contract("chatroom")]] chatroom : public contract {
 public:
    using contract::contract;
@@ -19,6 +20,15 @@ public:
    [[eosio::on_notify("eosio.token::transfer")]]
    void on_transfer( const name& from, const name& to, const asset& quantity,
                      const std::string& memo );
+
+   // Owner-only moderation. Adding these actions is purely additive to the
+   // ABI — no existing table or action changes — so it is NOT a breaking
+   // upgrade over the already-deployed contract. A banned account can no
+   // longer post (rejected in on_transfer, which reverts the transfer so no
+   // funds are taken and no RAM is spent); the dapp additionally reads
+   // banned.a to hide the account's already-stored messages.
+   [[eosio::action]] void ban( const name& account );
+   [[eosio::action]] void unban( const name& account );
 
 private:
    static constexpr symbol UOS_SYM        = symbol( "UOS", 8 );
@@ -44,6 +54,28 @@ private:
    static constexpr uint32_t DAY_SECONDS       = 24 * 60 * 60;
    static constexpr uint32_t MAX_MSGS_PER_DAY  = 50;
 
+   // Room-wide retention: keep only the most recent MAX_ROOM_MESSAGES rows,
+   // so the contract's RAM is hard-bounded regardless of how many distinct
+   // accounts ever post. Because ids are globally sequential, "oldest" is
+   // just messages.begin() — no secondary index needed.
+   //
+   // Overridable at compile time so the prune path can be exercised with a
+   // small window in tests (driving 1000+ messages through the 5s cooldown is
+   // impractical, same reason the 50/day cap isn't tested end-to-end). Build
+   // the test variant with -DCHATROOM_MAX_ROOM_MESSAGES=3 (see
+   // ultratests/chatroom/chatroom.prune.spec.ts). Production builds leave it
+   // unset and get 1000.
+#ifndef CHATROOM_MAX_ROOM_MESSAGES
+#define CHATROOM_MAX_ROOM_MESSAGES 1000
+#endif
+   static constexpr uint64_t MAX_ROOM_MESSAGES = CHATROOM_MAX_ROOM_MESSAGES;
+   // Cap erases per message so the FIRST post after this upgrade can't try to
+   // delete a large pre-existing backlog in a single transaction and blow the
+   // CPU limit (which would revert the transfer and wedge posting). Any
+   // backlog drains a few rows per message until steady state (delete 1 / add
+   // 1). Never needs to be large: at steady state at most one row is stale.
+   static constexpr int       PRUNE_BATCH       = 20;
+
    struct [[eosio::table, eosio::contract("chatroom")]] message_v0 {
       uint64_t       id;
       name           sender;
@@ -65,5 +97,16 @@ private:
       EOSLIB_SERIALIZE( sender_v0, (sender)(last_sent)(window_start)(day_count) )
    };
    typedef multi_index<"senders.a"_n, sender_v0> senders_table;
+
+   // Owner-managed ban list. One row per banned account; RAM billed to
+   // get_self() but bounded by the (small) number of bans, not chat volume.
+   // New, initially-empty table — additive, so introducing it does not
+   // migrate or break the live messages.a / senders.a tables.
+   struct [[eosio::table, eosio::contract("chatroom")]] banned_v0 {
+      name account;
+      uint64_t primary_key() const { return account.value; }
+      EOSLIB_SERIALIZE( banned_v0, (account) )
+   };
+   typedef multi_index<"banned.a"_n, banned_v0> banned_table;
 };
 } // namespace ultra

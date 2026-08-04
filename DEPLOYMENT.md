@@ -2,10 +2,24 @@
 
 Steps 0–4 (local toolchain: compile, contract tests, seeded chain, Playwright
 e2e) have been **run and verified end to end** on Windows, using the public
-Docker image. Follow them in order — each one depends on the previous. Step 5
-(mainnet deploy) has not been executed — it's permissionless and mechanically
-identical to steps 0-4, just against the real endpoint (see the correction
-at the top of that section).
+Docker image. Follow them in order — each one depends on the previous.
+
+Step 5 (mainnet deploy) **has been executed.** The contract is live on Ultra
+mainnet under account **`1aa2aa3aa4eo`** (code first set 2026-07-30). As of the
+last check the deployed code is the **original** version — ABI exposes only the
+`messages.a` and `senders.a` tables and no actions — and both tables are empty
+(no messages posted yet). The `owner` and `active` permissions are held by the
+same key, so a leaked `active` key is recoverable via `owner`, but there is no
+hot/cold separation; guard that key accordingly (it is also moderation
+authority — see the ban note below).
+
+The **moderation + retention upgrade** in this repo (rolling 1000-message
+window, `banned.a` table, owner-only `ban`/`unban`) has **not yet been pushed
+to mainnet.** It is a non-breaking `set contract` + `set abi` over the live
+account: `banned.a` is a new empty table and `ban`/`unban` are additive
+actions, and no existing table struct changes, so it upgrades in place with no
+migration. Because the live tables are currently empty, the prune path has no
+backlog to drain on first write.
 
 If you're an AI picking this up cold: run each command block, check its
 "expected result" before moving to the next step, and if something doesn't
@@ -66,8 +80,11 @@ MSYS_NO_PATHCONV=1 docker exec ultra bash -lc '
 ```
 
 Expected result: `build/chatroom.wasm` and `build/chatroom.abi` exist, and the
-ABI contains the `messages.a` table and no public actions (only the
-`on_transfer` notify handler).
+ABI contains the `messages.a`, `senders.a`, and `banned.a` tables, the
+`on_transfer` notify handler, and the two owner-only actions `ban` / `unban`.
+Re-deploying over the live contract is non-breaking: `banned.a` is a new empty
+table and `ban`/`unban` are additive actions — no existing table struct
+changes — so `set contract` + `set abi` upgrade in place with no migration.
 
 ## 2. Run the contract test suite (ultratest2)
 
@@ -85,10 +102,38 @@ system) that ultratest2 needs to bootstrap the chain — not this repo's own
 contract build output. Getting this backwards is the single most common
 mistake here (see gotchas below).
 
-Expected result: all 6 cases in `chatroom.spec.ts` pass — setup, alice posts
-(id 0), bob posts (id 1), empty memo reverts, over-length memo reverts,
-exactly-256-char memo accepted (boundary case). If any fail, that's a real bug
-to fix before deploying, not a spec to loosen.
+Expected result: `chatroom.spec.ts` passes — the original message/flood-control
+cases (post + id increment, empty/over-length/256-char memo, 5s cooldown,
+day_count) plus the moderation cases (non-owner ban/unban rejected with
+"missing authority", owner ban recorded in `banned.a`, banned account's
+transfer reverts with "banned", idempotent re-ban, ban of a nonexistent
+account and self-ban both revert, unban restores posting). Run this spec
+against the **default (window = 1000) build** so its ~7 messages are never
+pruned. If any fail, that's a real bug to fix before deploying, not a spec to
+loosen.
+
+**Prune / retention window** is a separate spec, `chatroom.prune.spec.ts`,
+because it needs a small-window build (posting 1000+ messages through the 5s
+cooldown is impractical — same rationale as the untested 50/day cap). Build a
+throwaway variant and run it on its own:
+
+```bash
+MSYS_NO_PATHCONV=1 docker exec ultra bash -lc '
+  cd /opt/ultra_workdir/contracts/chatroom &&
+  rm -rf build && mkdir build && cd build &&
+  cmake -DCHATROOM_MAX_ROOM_MESSAGES=3 .. && make &&
+  cd /opt/ultra_workdir/ultratests && npm install &&
+  npx ultratest2 --contracts-dir-path=/opt/eosio.contracts/build/contracts \
+    -t chatroom/chatroom.prune.spec.ts
+'
+```
+
+It asserts that at window = 3, ids climb 0→4 while the table holds at 3 rows,
+the two oldest ids are erased (RAM refunded, not just paged past), and
+`available_primary_key()` stays monotonic across deletions. **Rebuild without
+`-DCHATROOM_MAX_ROOM_MESSAGES` before deploying** so mainnet gets the 1000
+window — and don't run `chatroom.spec.ts` against the window=3 build (its
+row-count assertions would break as messages get pruned). One build per spec.
 
 **Do not skip this step to save time.** It's the only place the RAM-payer
 rule (`get_self()` pays for every row, never the sender) gets exercised
@@ -130,9 +175,9 @@ The chain seeded in step 3 must still be running for this step.
 
 **One-time setting:** `dapp/src/config.ts`'s `CONTRACT_ACCOUNT` must
 temporarily be `'chatroom1'` (matching the account `e2e_setup.ts` deploys to)
-while testing locally. It ships as the placeholder
-`'REPLACE_WITH_DEPLOYED_ACCOUNT'` — flip it to `'chatroom1'` before running
-e2e, and flip it back afterward (see gotchas below for why this matters).
+while testing locally. It ships as the live mainnet account `'1aa2aa3aa4eo'` —
+flip it to `'chatroom1'` before running e2e, and flip it back to
+`'1aa2aa3aa4eo'` afterward (see gotchas below for why this matters).
 
 ```bash
 cd dapp
@@ -219,26 +264,34 @@ in this doc — only the `-u` endpoint and chain ID change.
 4. **Verify:** `cleos get account <your-account>` (check `ram_usage` vs
    `ram_quota`), then `cleos get table <your-account> <your-account>
    messages.a` to confirm the table exists and is empty.
-5. **Point the dapp at it:** edit `dapp/src/config.ts`, replace
-   `CONTRACT_ACCOUNT = 'REPLACE_WITH_DEPLOYED_ACCOUNT'` with the real deployed
-   account name.
+5. **Point the dapp at it:** `dapp/src/config.ts` already sets
+   `CONTRACT_ACCOUNT = '1aa2aa3aa4eo'` (the current live account). Only change
+   this if you deploy to a different account — set it to that account name.
 
-## Open question the brief asked to flag, not silently work around
+## RAM growth & moderation (resolved — was flagged as an open question)
 
-**RAM growth is unbounded.** Every message permanently adds one row to
-`messages.a`, paid for by the contract account's own RAM (never the sender's
-— Ultra's notify-context rule, KB `03` §5.1), and v1 has no delete/expiry by
-design (brief: "No editing or deleting messages once sent"). For a
-disposable proof-of-concept this is fine at low volume, but it means the
-contract account's RAM bill grows monotonically with usage and must be
-topped up manually (RAM is refundable via `refundram` if the contract is ever
-decommissioned, but there's no automatic reclaiming while it's live). This
-wasn't papered over with, e.g., a message TTL or a max-row cap, because
-nothing like that was in the brief or the KB as a chain-level answer — if
-usage were expected to be more than trivial, this is the first thing to
-revisit, and it should be a product decision (cap total messages? paginate
-and archive old ones off-contract? accept the RAM cost as the price of "just
-the chain, no backend"?), not something to decide unilaterally here.
+**RAM growth is bounded by a rolling retention window.** Each message is a row
+in `messages.a`, paid for by the contract account's own RAM (never the
+sender's — Ultra's notify-context rule, KB `03` §5.1). To keep that RAM bill
+from growing without limit, the contract retains only the most recent
+`MAX_ROOM_MESSAGES` (1000) rows room-wide: on each write it prunes rows whose
+id is more than 1000 behind the newest (see `on_transfer`). Pruning is capped
+at `PRUNE_BATCH` (20) erases per message so the first write after this upgrade
+can't try to delete a large pre-existing backlog in one oversized transaction
+(which would exceed the CPU limit, revert the transfer, and wedge posting); any
+backlog drains a few rows per message until steady state (delete 1 / add 1).
+Erased rows refund RAM to the contract, so at steady state the RAM footprint is
+flat at ~1000 rows regardless of total lifetime volume or account count.
+
+Moderation is separate: `ban`/`unban` are owner-only actions (they
+`require_auth` the contract account). A banned account is rejected in
+`on_transfer` (so it can't post and stops consuming RAM), and the dapp reads
+`banned.a` to hide that account's already-stored messages until they scroll out
+of the 1000-row window. Banning does not delete on-chain data — it can't; chain
+history is public and immutable, this only stops new posts and hides old ones
+in the official UI. Because the ban is enforced by signing with the contract
+account's `active` key, custody of that key is now also moderation authority —
+see the key-handling note in §5.
 
 ## Gotchas already fixed in this repo (context if something looks off)
 
@@ -278,10 +331,9 @@ here so nobody "fixes" them again or reverts them by accident:
 - **`dapp/vite.config.ts`**: `vitest run` was picking up the Playwright spec
   under `tests/e2e/` and crashing (Playwright's `test()` isn't valid inside
   Vitest) — fixed with `test.exclude: ['node_modules/**', 'tests/e2e/**']`.
-- **`dapp/src/config.ts`**'s `CONTRACT_ACCOUNT` is a placeholder by design
-  (see step 5.6) — it must be temporarily set to `'chatroom1'` for local e2e
-  runs (step 4) and reverted to `'REPLACE_WITH_DEPLOYED_ACCOUNT'` afterward.
-  Leaving it on `'chatroom1'` after testing looks like a real deployed
-  account and will cause `eosio.token::transfer` to fail with "to account
-  does not exist" once someone runs the app against a chain where
-  `chatroom1` isn't the seeded test account.
+- **`dapp/src/config.ts`**'s `CONTRACT_ACCOUNT` is the live mainnet account
+  `'1aa2aa3aa4eo'` — it must be temporarily set to `'chatroom1'` for local e2e
+  runs (step 4) and reverted to `'1aa2aa3aa4eo'` afterward. Leaving it on
+  `'chatroom1'` after testing will cause `eosio.token::transfer` to fail with
+  "to account does not exist" once someone runs the app against mainnet, where
+  `chatroom1` isn't a real account.

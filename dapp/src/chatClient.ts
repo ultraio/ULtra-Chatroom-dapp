@@ -4,7 +4,7 @@
 // and reopening rebuilds the feed from chain data" true by construction.
 // Writes: a single eosio.token::transfer whose memo is the chat message.
 import { UInt64, type APIClient } from '@wharfkit/antelope';
-import { CONTRACT_ACCOUNT, MESSAGES_TABLE, POSTAGE_QUANTITY, TOKEN_CONTRACT } from './config';
+import { BANNED_TABLE, CONTRACT_ACCOUNT, MESSAGES_TABLE, POSTAGE_QUANTITY, TOKEN_CONTRACT } from './config';
 
 export interface ChatMessage {
   id: number;
@@ -67,6 +67,36 @@ export async function readNewMessages(client: APIClient, afterId: number): Promi
     lowerBound = page.next_key;
   }
   return all;
+}
+
+/**
+ * Current ban list (small, owner-managed) as a Set of account names. Used to
+ * hide banned senders' already-stored messages — the contract already blocks
+ * them from posting NEW ones, but existing rows stay on chain until they
+ * scroll out of the 1000-message retention window. Read separately from the
+ * feed so a banned account added later hides its history on the next refresh.
+ */
+export async function readBannedAccounts(client: APIClient): Promise<Set<string>> {
+  const banned = new Set<string>();
+  let lowerBound: string | undefined;
+  for (;;) {
+    const result = await client.v1.chain.get_table_rows({
+      code: CONTRACT_ACCOUNT,
+      scope: CONTRACT_ACCOUNT,
+      table: BANNED_TABLE,
+      json: true,
+      limit: PAGE_LIMIT,
+      // next_key for a name-keyed table comes back as the numeric form of the
+      // name — wrap it like the messages path so the type matches.
+      lower_bound: lowerBound !== undefined ? UInt64.from(lowerBound) : undefined,
+    });
+    for (const row of result.rows as unknown as Array<{ account: string }>) {
+      banned.add(row.account);
+    }
+    if (!result.more || result.next_key === undefined) break;
+    lowerBound = String(result.next_key);
+  }
+  return banned;
 }
 
 export function buildSendMessageAction(from: string, permission: string, text: string) {
