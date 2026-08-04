@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue';
 import type { ChatMessage } from '../chatClient';
-import { shortenAddress, formatTimestamp } from '../chatMath';
+import { formatTimestamp } from '../chatMath';
+import { state } from '../connection';
 
 const props = defineProps<{ messages: ChatMessage[] }>();
 
@@ -13,22 +14,46 @@ function scrollToBottom() {
 }
 
 onMounted(scrollToBottom);
-// New messages (ours or anyone else's) push the composer line down — follow
-// it so the prompt stays where you'd expect it: right under the last line.
+// New messages (ours or anyone else's) grow the feed — follow to the bottom so
+// the latest line stays in view, like any chat app.
 watch(
   () => props.messages.length,
   () => nextTick(scrollToBottom),
 );
+
+// Deterministic avatar tint per account name — same name, same colour, every
+// session, so the eye can track who's who without a profile system.
+const AVATAR_COLORS = ['#7a29ff', '#5e6bff', '#9b5eff', '#3aa0ff', '#e0559b', '#22c55e', '#f59e0b', '#14b8a6'];
+function avatarColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function initials(name: string): string {
+  return name.slice(0, 2);
+}
+function isMine(sender: string): boolean {
+  return !!state.account && sender === state.account;
+}
 </script>
 
 <template>
   <div class="feed" ref="feedEl">
-    <p v-if="messages.length === 0" class="empty">no messages yet. say something</p>
-    <div v-for="m in messages" :key="m.id" class="message-row">
-      <span class="time">{{ formatTimestamp(m.sent_at) }}</span>
-      <span class="addr">{{ shortenAddress(m.sender) }}</span>
-      <span class="text">{{ m.text }}</span>
+    <div v-if="messages.length === 0" class="empty">
+      <div class="big">No messages yet</div>
+      <div>Connect your wallet and write the first line — it's stored on the Ultra chain, forever.</div>
     </div>
-    <slot />
+
+    <div v-for="m in messages" :key="m.id" class="msg" :class="{ mine: isMine(m.sender) }">
+      <div class="avatar" :style="{ background: avatarColor(m.sender) }">{{ initials(m.sender) }}</div>
+      <div class="bubble">
+        <div class="sender">{{ m.sender }}</div>
+        <div class="text">{{ m.text }}</div>
+        <div class="meta">
+          <span class="time">{{ formatTimestamp(m.sent_at) }}</span>
+          <span class="id" :title="`onchain message #${m.id}`">{{ m.id }}</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

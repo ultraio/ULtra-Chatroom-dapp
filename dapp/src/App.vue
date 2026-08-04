@@ -68,16 +68,20 @@ onUnmounted(() => {
 
 <template>
   <header class="topbar">
-    <h1>ultra chat room</h1>
+    <div class="brand">
+      <img src="/ultra-logo.png" alt="Ultra" />
+      <span class="title">Ultra <b>Chat</b></span>
+      <span class="chain-tag">mainnet</span>
+    </div>
+    <span class="spacer" />
     <ConnectButton />
   </header>
 
   <p v-if="state.networkMismatch" class="error-banner">
-    Wallet is on a different network than this dapp (mainnet). Switch networks in the extension.
+    Your wallet is on a different network. Switch to Ultra mainnet in the extension to send messages.
   </p>
   <p v-if="state.error" class="error-banner">{{ state.error }}</p>
 
-  <MessageFeed :messages="visibleMessages">
-    <MessageInput @sent="pollForNew" />
-  </MessageFeed>
+  <MessageFeed :messages="visibleMessages" />
+  <MessageInput @sent="pollForNew" />
 </template>

@@ -1,25 +1,22 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { state, signAndPush } from '../connection';
 import { buildSendMessageAction } from '../chatClient';
 import { validateMessage, friendlyChainError } from '../chatMath';
-import { shortenAddress } from '../chatMath';
+import { MAX_MESSAGE_LENGTH } from '../config';
 
 const emit = defineEmits<{ (e: 'sent'): void }>();
 
 const draft = ref('');
 const error = ref('');
-const focused = ref(false);
 const inputEl = ref<HTMLInputElement | null>(null);
 
-function onFocus() {
-  focused.value = true;
-  inputEl.value?.scrollIntoView({ block: 'end' });
-}
+const remaining = computed(() => MAX_MESSAGE_LENGTH - draft.value.trim().length);
+const canSend = computed(
+  () => state.connected && !state.busy && remaining.value >= 0 && draft.value.trim().length > 0,
+);
 
-// The input only enters the DOM once state.connected flips true (see v-if
-// below), so the static `autofocus` attribute never gets a chance to fire —
-// focus it explicitly as soon as it mounts.
+// Focus the input as soon as a wallet connects, so you can start typing.
 watch(
   () => state.connected,
   async (connected) => {
@@ -30,7 +27,7 @@ watch(
 );
 
 async function send() {
-  if (!state.connected || state.busy) return;
+  if (!canSend.value) return;
   error.value = '';
   const result = validateMessage(draft.value);
   if (!result.ok) {
@@ -46,8 +43,8 @@ async function send() {
     const raw = e instanceof Error ? e.message : 'Send failed.';
     error.value = friendlyChainError(raw);
   } finally {
-    // busy briefly disables (and thus blurs) the input — reclaim focus so
-    // it's always ready for the next line, like a real terminal prompt.
+    // busy briefly disables (and thus blurs) the input — reclaim focus so it's
+    // always ready for the next message.
     await nextTick();
     inputEl.value?.focus();
   }
@@ -55,23 +52,24 @@ async function send() {
 </script>
 
 <template>
-  <p v-if="error" class="shell-error">{{ error }}</p>
-  <form class="composer-line" @submit.prevent="send">
-    <template v-if="state.connected">
-      <span class="prompt">{{ shortenAddress(state.account) }}@ultra:~$</span>
-      <span v-if="!draft && focused" class="cursor">█</span>
+  <div class="composer">
+    <form @submit.prevent="send">
       <input
         ref="inputEl"
         type="text"
         v-model="draft"
-        :disabled="state.busy"
-        :class="{ 'caret-hidden': !draft }"
+        :placeholder="state.connected ? 'Message the chain…' : 'Connect your wallet to start chatting'"
+        :disabled="!state.connected || state.busy"
         maxlength="256"
-        autofocus
-        @focus="onFocus"
-        @blur="focused = false"
       />
-    </template>
-    <span v-else class="prompt prompt-disconnected">guest@ultra:~$ connect wallet to send messages</span>
-  </form>
+      <button type="submit" class="solid send" :disabled="!canSend">
+        {{ state.busy ? 'Sending…' : 'Send' }}
+      </button>
+    </form>
+    <div class="hint">
+      <span v-if="error" class="send-error">{{ error }}</span>
+      <span v-else>Each message is a real transaction on Ultra mainnet.</span>
+      <span v-if="draft" class="count" :class="{ over: remaining < 0 }">{{ remaining }}</span>
+    </div>
+  </div>
 </template>

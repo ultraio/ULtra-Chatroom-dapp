@@ -1,17 +1,51 @@
-/* Ultra terminal theme: black background, Ultra-purple monospace, fills
-   the browser tab exactly (no fixed max-width) and scales with it via
-   clamp()-based type sizing instead of fixed breakpoints. */
-* {
-  box-sizing: border-box;
-}
+/* Ultra Chat — modern chat UI on Ultra's brand system.
+   Brand tokens taken from the Ultra bridge dapp: primary #7A29FF (hover
+   #8639FF), warm near-black surfaces, translucent-purple buttons with a
+   purple border. Dark by default (matches Ultra's apps); a light scheme is
+   provided for prefers-color-scheme: light. */
 
 :root {
-  --bg: #000000;
-  --accent: #6f3de0;
-  --accent-dim: #3d2178;
-  --accent-bright: #d6c3ff;
-  --red: #ff4d4d;
-  --mono: ui-monospace, 'SFMono-Regular', 'Consolas', 'Liberation Mono', Menlo, monospace;
+  --primary: #7a29ff;
+  --primary-hi: #8639ff;
+  --primary-soft: rgba(122, 41, 255, 0.14);
+  --primary-grad: linear-gradient(135deg, #9b5eff 0%, #5e6bff 100%);
+  --success: #22c55e;
+  --danger: #ff5c5c;
+  --radius: 0.75rem;
+  --radius-sm: 0.5rem;
+  --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* dark (default) */
+  --bg: #131316;
+  --bg-elev: #1b1b1f;
+  --surface: #1f1f24;
+  --surface-2: #26262c;
+  --border: #2c2c33;
+  --border-strong: #3a3a42;
+  --text: #f5f5f7;
+  --text-dim: #a0a0aa;
+  --text-muted: #7b7b85;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f4f8;
+    --bg-elev: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f0eef6;
+    --border: #e5e2ee;
+    --border-strong: #d6d2e4;
+    --text: #17151f;
+    --text-dim: #55525f;
+    --text-muted: #8b8794;
+    --shadow: 0 8px 30px rgba(60, 40, 120, 0.1);
+  }
+}
+
+* {
+  box-sizing: border-box;
 }
 
 html,
@@ -23,224 +57,347 @@ body,
 
 body {
   background: var(--bg);
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: clamp(0.8rem, 0.65rem + 0.5vw, 1.05rem);
-  /* subtle CRT scanlines — decorative only, low enough contrast not to fight readability */
-  background-image: repeating-linear-gradient(
-    to bottom,
-    rgba(111, 61, 224, 0.05) 0px,
-    rgba(111, 61, 224, 0.05) 1px,
-    transparent 1px,
-    transparent 3px
-  );
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  max-width: 860px;
+  margin: 0 auto;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+@media (max-width: 880px) {
+  #app {
+    border-left: none;
+    border-right: none;
+  }
 }
 
 ::selection {
-  background: var(--accent-dim);
-  color: #000;
+  background: var(--primary-soft);
 }
 
 ::-webkit-scrollbar {
   width: 10px;
 }
-::-webkit-scrollbar-track {
-  background: #000;
-}
 ::-webkit-scrollbar-thumb {
-  background: var(--accent-dim);
-  border: 2px solid #000;
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
+/* ---------- header ---------- */
 .topbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--accent-dim);
-  text-shadow: 0 0 4px currentColor;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
-.topbar h1 {
-  font-size: 1em;
-  margin: 0;
-  font-weight: normal;
-  letter-spacing: 0.05em;
-  text-transform: lowercase;
-  /* truncate instead of wrapping, so the button never gets squeezed
-     off-row or forced to wrap onto multiple lines as the tab narrows */
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.topbar h1::before {
-  content: 'guest@ultra:~$ ';
-  color: var(--accent-dim);
-}
-
-.topbar > :last-child {
-  flex-shrink: 0;
-}
-
-.account-group {
+.brand {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
 }
 
+.brand img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.brand .title {
+  font-size: 1.02rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.brand .title b {
+  color: var(--primary);
+  font-weight: 650;
+}
+
+.brand .chain-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+.brand .chain-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+/* ---------- buttons (Ultra style) ---------- */
+button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 0.95rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  white-space: nowrap;
+}
+button:hover:not(:disabled) {
+  background: rgba(122, 41, 255, 0.32);
+  border-color: var(--primary-hi);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+button.solid {
+  background: var(--primary);
+  color: #fff;
+}
+button.solid:hover:not(:disabled) {
+  background: var(--primary-hi);
+}
+button.ghost {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-dim);
+}
+button.ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary-hi);
+  outline-offset: 2px;
+}
+
+/* account chip */
+.account-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 .account-group .account {
-  color: var(--accent-bright);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+}
+.account-group .account::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--success);
 }
 
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
+/* ---------- banners ---------- */
+.error-banner {
+  margin: 0;
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  color: #fff;
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
+/* ---------- feed ---------- */
 .feed {
   flex: 1;
   overflow-y: auto;
-  padding: 0.75rem 1rem;
+  padding: 1.1rem 1rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
   min-height: 0;
 }
 
 .feed .empty {
-  color: var(--accent-dim);
+  margin: auto;
+  text-align: center;
+  color: var(--text-muted);
+  max-width: 22rem;
+}
+.feed .empty .big {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
 }
 
-.message-row {
-  padding: 0.1rem 0;
-  line-height: 1.5;
+/* message row */
+.msg {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+  max-width: 82%;
+}
+.msg.mine {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.bubble {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+}
+.msg.mine .bubble {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  border-bottom-right-radius: 4px;
+}
+.msg:not(.mine) .bubble {
+  border-bottom-left-radius: 4px;
+}
+
+.bubble .sender {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 0.15rem;
+  font-family: var(--mono);
+}
+.msg.mine .bubble .sender {
+  display: none;
+}
+
+.bubble .text {
+  color: var(--text);
   word-break: break-word;
   white-space: pre-wrap;
 }
 
-.message-row .time {
-  color: var(--accent-dim);
-}
-
-.message-row .addr {
-  color: var(--accent);
-  font-weight: bold;
-  margin: 0 0.35em;
-}
-
-.message-row .addr::before {
-  content: '[';
-  color: var(--accent-dim);
-  font-weight: normal;
-}
-.message-row .addr::after {
-  content: ']$';
-  color: var(--accent-dim);
-  font-weight: normal;
-}
-
-.message-row .text {
-  color: var(--accent-bright);
-  text-shadow: 0 0 3px rgba(214, 195, 255, 0.5);
-}
-
-/* Lives as the last row inside .feed (see MessageFeed's slot) so the
-   prompt reads as the next line of the same scrolling log, not a
-   separate input box below it. */
-.composer-line {
+.bubble .meta {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.1rem 0;
-  line-height: 1.5;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--text-muted);
 }
-
-.composer-line .prompt {
-  color: var(--accent-dim);
-  white-space: nowrap;
-  flex-shrink: 0;
+.msg.mine .bubble .meta {
+  justify-content: flex-end;
 }
-
-.composer-line .cursor {
-  color: var(--accent);
-  animation: blink 1s steps(1) infinite;
+.bubble .meta .id {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 0.3rem;
 }
-
-.composer-line .prompt-disconnected {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.composer-line input[type='text'] {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-family: inherit;
-  font-size: 1em;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--accent-bright);
-  caret-color: var(--accent);
-  outline: none;
-}
-
-/* while empty, the decorative .cursor glyph is the only cursor shown —
-   suppress the native caret so the two don't blink side by side */
-.composer-line input[type='text'].caret-hidden {
-  caret-color: transparent;
-}
-
-button {
-  font-family: inherit;
-  font-size: 1em;
-  padding: 0.4rem 0.9rem;
-  border: 1px solid var(--accent-dim);
-  background: transparent;
-  color: var(--accent);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  background: var(--accent-dim);
-  color: #000;
-}
-
-button:disabled {
-  cursor: not-allowed;
+.bubble .meta .id::before {
+  content: '#';
   opacity: 0.6;
 }
 
-.error-banner {
-  color: var(--red);
-  padding: 0.25rem 1rem;
-  font-size: 0.9em;
+/* ---------- composer ---------- */
+.composer {
+  border-top: 1px solid var(--border);
+  padding: 0.7rem 1rem;
+  background: var(--bg-elev);
+}
+.composer form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.composer input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.composer input[type='text']:focus {
+  border-color: var(--primary);
+}
+.composer input[type='text']:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.composer input[type='text']::placeholder {
+  color: var(--text-muted);
 }
 
-.error-banner::before {
-  content: '! ';
+.composer .send {
+  flex-shrink: 0;
 }
 
-/* Send-time errors: rendered as the last row inside .feed (see
-   MessageInput's slot), styled like a shell printing to stderr right
-   after the failed command rather than a standalone warning banner. */
-.shell-error {
-  padding: 0.1rem 0;
-  line-height: 1.5;
-  color: var(--red);
-  word-break: break-word;
+.composer .hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0 0.2rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
-
-.shell-error::before {
-  content: 'bash: ';
+.composer .hint .count.over {
+  color: var(--danger);
+}
+.composer .send-error {
+  color: var(--danger);
 }
