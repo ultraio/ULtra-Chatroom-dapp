@@ -273,23 +273,22 @@ in this doc — only the `-u` endpoint and chain ID change.
 
 Deploying the contract (steps 0–5) only puts the chain side live. The `dapp/`
 is a static Vue 3 + Vite SPA — `npm run build` emits `dapp/dist`, which any
-static host can serve. Ultra hosts its public front-ends on **Cloudflare
-Pages**, and this dapp fits the simplest case on that platform:
+static host can serve. These notes use **Cloudflare Pages**; the same `dist/`
+works unchanged on Netlify, GitHub Pages, S3 + CloudFront, or any static host.
 
-- **No secrets, no build-time env.** Everything the app needs — the mainnet
-  chain id, the public RPC endpoints, the deployed `CONTRACT_ACCOUNT` — is
-  already baked into `dapp/src/config.ts` and committed. There is nothing to
-  inject at build time and no Vault/secret wiring to set up.
-- **No access gating.** This is a public dapp meant for anyone with a wallet,
-  so it is *not* put behind Cloudflare Access (unlike Ultra's internal,
-  employee-only Pages tools). It's an ordinary public site.
+It's a plain static deploy:
+
+- **No secrets, no build-time env.** Everything the app needs — the chain id,
+  the public RPC endpoints, the deployed `CONTRACT_ACCOUNT` — is already in
+  `dapp/src/config.ts` and committed. Nothing to inject at build time.
 - **Served at a domain root.** Vite builds with `base: '/'` and the assets in
-  `index.html` are root-relative (`/assets/...`), so the site must be served
-  from the root of its domain (e.g. `chatroom.ultra.io`), not a sub-path.
+  `index.html` are root-relative (`/assets/...`), so serve the site from the
+  root of its domain, not a sub-path. (To host under a sub-path, set `base` in
+  `dapp/vite.config.ts` and rebuild.)
 
 Two equivalent ways to deploy it:
 
-### 6a. Cloudflare Pages Git integration (recommended)
+### 6a. Git integration (recommended)
 
 Connect the repository once in the Cloudflare dashboard (Workers & Pages →
 Create → Pages → Connect to Git), then every push to the production branch
@@ -301,28 +300,26 @@ auto-builds and publishes:
 | Root directory | `dapp` |
 | Build command | `npm ci && npm run build` |
 | Build output directory | `dist` (i.e. `dapp/dist`) |
-| Node version | 20+ (matches the toolchain the app is built/tested on) |
+| Node version | 20+ |
 
-Add the custom domain (`chatroom.ultra.io` or similar) in the project's
-**Custom domains** tab — Cloudflare creates the CNAME. That's the whole
-production path; there's no server, database, or backend to stand up.
+Add a custom domain in the project's **Custom domains** tab — Cloudflare
+creates the CNAME. There's no server, database, or backend to stand up.
 
-> **One caveat carried over from other Ultra Pages deploys:** a Git-push
-> trigger only fires on *human* (or PAT/GitHub-App) pushes. Commits made with
-> a workflow's default `GITHUB_TOKEN` do **not** raise a `push` event, so if
-> you ever add a bot/cron that commits to the production branch, the deploy
-> will silently stop moving with no failed run to notice. This repo has no
-> such bot today, so a plain push trigger is safe; keep it that way, or wire
-> the deploy to the bot workflow explicitly if you add one.
+> **Gotcha (Cloudflare Pages + GitHub).** A Git-push trigger only fires on
+> human (or PAT / GitHub-App) pushes. Commits made with a workflow's default
+> `GITHUB_TOKEN` do **not** raise a `push` event, so if you add a bot/cron that
+> commits to the production branch, the deploy silently stops moving with no
+> failed run to notice. This repo has no such bot, so a plain push trigger is
+> safe — keep it that way, or wire the deploy to the bot workflow explicitly.
 
 ### 6b. Direct upload with Wrangler (no Git integration)
 
-For a one-off or fork-local deploy, build and push `dist` straight to Pages:
+For a one-off deploy, build and push `dist` straight to Pages:
 
 ```bash
 cd dapp
 npm ci && npm run build          # produces dapp/dist
-npx wrangler pages deploy dist --project-name=ultra-chatroom
+npx wrangler pages deploy dist --project-name=<your-project>
 ```
 
 `wrangler` prompts for a Cloudflare login (or reads `CLOUDFLARE_API_TOKEN` /
@@ -335,20 +332,13 @@ npx wrangler pages deploy dist --project-name=ultra-chatroom
 curl -sI https://<your-domain>/ | head -3        # expect HTTP/2 200, content-type text/html
 ```
 
-Then open it in a browser with the Ultra extension installed: connect the
-wallet, send a message, confirm it appears in the feed and that a fresh reload
-rebuilds the feed from chain reads alone (no backend, per the README).
+Then open it in a browser with a compatible wallet extension: connect, send a
+message, confirm it appears in the feed, and confirm a fresh reload rebuilds
+the feed from chain reads alone (no backend, per the README).
 
 **Rollback** is a dashboard action — Pages keeps the last ~10 deployments
 (Workers & Pages → the project → Deployments → *Rollback to this deployment*),
 or `git revert` the offending commit and let CI republish.
-
-> **Ultra-internal note.** Ultra's own production Pages projects (custom
-> domain, DNS) are provisioned through the devops Terraform + Atlantis
-> pipeline rather than by hand in the dashboard; that config lives in the
-> private devops repo, not here. The dashboard/Wrangler steps above are the
-> self-contained path and are what a fork would use — the end state (a static
-> `dapp/dist` served from a domain root) is identical either way.
 
 ## RAM growth & moderation (resolved — was flagged as an open question)
 
