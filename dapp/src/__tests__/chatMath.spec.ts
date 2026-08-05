@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { validateMessage, shortenAddress, formatTimestamp } from '../chatMath';
+import { validateMessage, shortenAddress, formatTimestamp, mergeNewMessages } from '../chatMath';
+import type { ChatMessage } from '../chatClient';
 import { MAX_MESSAGE_LENGTH } from '../config';
+
+const msg = (id: number): ChatMessage => ({ id, sender: 's', text: `m${id}`, sent_at: '2026-08-05T00:00:00' });
 
 describe('validateMessage', () => {
   it('rejects an empty message', () => {
@@ -45,5 +48,26 @@ describe('formatTimestamp', () => {
 
   it('falls back to the raw string if parsing fails', () => {
     expect(formatTimestamp('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('mergeNewMessages', () => {
+  it('appends genuinely new rows in order', () => {
+    expect(mergeNewMessages([msg(0)], [msg(1), msg(2)])).toEqual([msg(0), msg(1), msg(2)]);
+  });
+
+  // The core bug: two overlapping polls both fetch the same fresh row before
+  // either has appended, so the same on-chain id arrives twice.
+  it('drops a fresh row whose id is already present (concurrent-poll dup)', () => {
+    expect(mergeNewMessages([msg(0)], [msg(0)])).toEqual([msg(0)]);
+  });
+
+  it('dedups repeats within the fresh batch itself', () => {
+    expect(mergeNewMessages([], [msg(0), msg(0), msg(1)])).toEqual([msg(0), msg(1)]);
+  });
+
+  it('returns the SAME array reference when nothing is new (no reactive churn)', () => {
+    const existing = [msg(0), msg(1)];
+    expect(mergeNewMessages(existing, [msg(1)])).toBe(existing);
   });
 });

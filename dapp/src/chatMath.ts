@@ -2,6 +2,7 @@
 // mirror" pattern) — kept tiny and vitest-pinned so UI validation can never
 // silently drift from what the chain will actually accept/reject.
 import { MAX_MESSAGE_LENGTH } from './config';
+import type { ChatMessage } from './chatClient';
 
 export interface ValidationResult {
   ok: boolean;
@@ -16,6 +17,24 @@ export function validateMessage(raw: string): ValidationResult {
     return { ok: false, text, error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters).` };
   }
   return { ok: true, text };
+}
+
+// Append only rows whose on-chain id we don't already have, deduping within the
+// fresh batch too. Every message has a unique table id, so id-presence is the
+// whole identity check. This is what keeps the feed correct when two poll ticks
+// overlap (the 1s interval + the post-send @sent trigger): both can fetch the
+// same fresh row before either appends, and without this the row lands twice.
+// Returns the SAME array reference when nothing is new, so an idle poll doesn't
+// trigger needless reactive re-renders.
+export function mergeNewMessages(existing: ChatMessage[], fresh: ChatMessage[]): ChatMessage[] {
+  const seen = new Set(existing.map((m) => m.id));
+  const additions: ChatMessage[] = [];
+  for (const m of fresh) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    additions.push(m);
+  }
+  return additions.length ? [...existing, ...additions] : existing;
 }
 
 // Rewrites the raw on-chain check() text (see contracts/chatroom's

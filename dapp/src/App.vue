@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { state, getClient, initWalletSync, teardownWalletSync, tryReconnect } from './connection';
 import { readAllMessages, readNewMessages, readBannedAccounts, type ChatMessage } from './chatClient';
+import { mergeNewMessages } from './chatMath';
 import { POLL_INTERVAL_MS } from './config';
 import ConnectButton from './components/ConnectButton.vue';
 import MessageFeed from './components/MessageFeed.vue';
@@ -43,7 +44,10 @@ async function loadFullFeed() {
 async function pollForNew() {
   try {
     const fresh = await readNewMessages(getClient(), lastId());
-    if (fresh.length) messages.value = [...messages.value, ...fresh];
+    // Dedup on append: the interval poll and the post-send @sent trigger can
+    // both fetch the same fresh row before either appends. mergeNewMessages
+    // drops any id we already have, so an overlap can't double a message.
+    if (fresh.length) messages.value = mergeNewMessages(messages.value, fresh);
   } catch {
     // transient RPC hiccup — next poll tick will retry
   }
