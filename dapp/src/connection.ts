@@ -3,7 +3,7 @@
 import { reactive } from 'vue';
 import { APIClient } from '@wharfkit/antelope';
 import * as wallet from './ultraWallet';
-import { NETWORKS, SIGN_TIMEOUT_MS, matchNetwork, type NetworkConfig } from './config';
+import { NETWORKS, matchNetwork, type NetworkConfig } from './config';
 
 export interface ConnectionState {
   walletAvailable: boolean;
@@ -146,33 +146,10 @@ export function auth(): { actor: string; permission: string }[] {
   return [{ actor: state.account, permission: state.permission }];
 }
 
-// If the wallet's approval popup is closed directly (not an explicit Decline
-// click), some wallets never settle signTransaction()'s promise at all — race
-// it against a timeout so a cancelled request still frees up the UI instead
-// of leaving state.busy (and thus the send button) stuck forever.
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error('The wallet did not respond — the request may have been closed. Please try again.')),
-      ms,
-    );
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
-}
-
 export async function signAndPush(actions: Array<Record<string, unknown>>): Promise<string> {
   state.busy = true;
   try {
-    const res = await withTimeout(wallet.signTransaction(actions as any), SIGN_TIMEOUT_MS);
+    const res = await wallet.signTransaction(actions as any);
     if (res.status !== 'success') {
       throw new Error(res.message || (res.code === 4001 ? 'You declined the transaction.' : 'Transaction failed.'));
     }
