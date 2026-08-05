@@ -6,21 +6,18 @@ Docker image. Follow them in order — each one depends on the previous.
 
 Step 5 (mainnet deploy) **has been executed** and step 6 (frontend hosting on
 Cloudflare Pages) is documented but not yet stood up. The contract is live on
-Ultra mainnet under account **`1aa2aa3aa4eo`** (code first set 2026-07-30). As of the
-last check the deployed code is the **original** version — ABI exposes only the
-`messages.a` and `senders.a` tables and no actions — and both tables are empty
-(no messages posted yet). The `owner` and `active` permissions are held by the
-same key, so a leaked `active` key is recoverable via `owner`, but there is no
-hot/cold separation; guard that key accordingly (it is also moderation
-authority — see the ban note below).
-
-The **moderation + retention upgrade** in this repo (rolling 1000-message
-window, `banned.a` table, owner-only `ban`/`unban`) has **not yet been pushed
-to mainnet.** It is a non-breaking `set contract` + `set abi` over the live
-account: `banned.a` is a new empty table and `ban`/`unban` are additive
-actions, and no existing table struct changes, so it upgrades in place with no
-migration. Because the live tables are currently empty, the prune path has no
-backlog to drain on first write.
+Ultra mainnet under account **`1aa2aa3aa4eo`** (code first set 2026-07-30). The
+**moderation + retention upgrade** (rolling 1000-message window, `banned.a`
+table, owner-only `ban`/`unban`) has also been pushed live (code updated
+2026-08-03) — ABI now exposes the `messages.a`, `senders.a`, and `banned.a`
+tables plus the `ban`/`unban` actions. It was a non-breaking `set contract` +
+`set abi` over the live account: `banned.a` was a new empty table and
+`ban`/`unban` are additive actions, no existing table struct changed, so it
+upgraded in place with no migration. The live tables were empty at upgrade
+time, so the prune path had no backlog to drain on first write. The `owner`
+and `active` permissions are held by the same key, so a leaked `active` key is
+recoverable via `owner`, but there is no hot/cold separation; guard that key
+accordingly (it is also moderation authority — see the ban note below).
 
 If you're an AI picking this up cold: run each command block, check its
 "expected result" before moving to the next step, and if something doesn't
@@ -259,9 +256,15 @@ in this doc — only the `-u` endpoint and chain ID change.
    is needed):
    ```bash
    cleos -u <mainnet-rpc> set contract <your-account> \
-     ./contracts/chatroom/build/chatroom.wasm ./contracts/chatroom/build/chatroom.abi \
+     ./contracts/chatroom/build chatroom.wasm chatroom.abi \
      -p <your-account>@active
    ```
+   `contract-dir` (the third positional arg) must be the **directory**
+   containing the wasm/abi, not a file path — `wasm-file`/`abi-file` are
+   filenames *relative to that directory*. Passing the `.wasm` file's own path
+   as `contract-dir` silently misassigns the arguments and fails with a
+   misleading `Error 3160010: no abi file found <mangled-path>` that doesn't
+   name the real cause.
 4. **Verify:** `cleos get account <your-account>` (check `ram_usage` vs
    `ram_quota`), then `cleos get table <your-account> <your-account>
    messages.a` to confirm the table exists and is empty.
@@ -417,3 +420,10 @@ here so nobody "fixes" them again or reverts them by accident:
   `'chatroom1'` after testing will cause `eosio.token::transfer` to fail with
   "to account does not exist" once someone runs the app against mainnet, where
   `chatroom1` isn't a real account.
+- **Step 5's `set contract` command** originally passed the `.wasm` and `.abi`
+  files' full paths as separate positional args, which cleos silently
+  misinterpreted (the file path was taken as `contract-dir`, mangling the
+  derived abi path) and failed with a misleading `Error 3160010: no abi file
+  found`. Fixed to pass the build **directory** as `contract-dir` and the two
+  filenames relative to it, matching `cleos set contract --help`'s real
+  signature: `account contract-dir [wasm-file] [abi-file]`.
