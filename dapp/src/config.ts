@@ -19,6 +19,11 @@ export const MAX_MESSAGE_LENGTH = 256;
 // cadence without hammering the RPC on every render tick.
 export const POLL_INTERVAL_MS = 1000;
 
+// Some wallets never resolve or reject signTransaction() if their approval
+// popup is closed directly instead of an explicit Decline click — without a
+// bound, the send button would stay disabled forever (see connection.ts).
+export const SIGN_TIMEOUT_MS = 120_000;
+
 export interface NetworkConfig {
   name: string;
   chainId: string;
