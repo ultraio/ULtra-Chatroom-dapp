@@ -348,6 +348,7 @@ button.ghost:hover:not(:disabled) {
 
 /* ---------- composer ---------- */
 .composer {
+  position: relative;
   border-top: 1px solid var(--border);
   padding: 0.7rem 1rem;
   background: var(--bg-elev);
@@ -400,4 +401,72 @@ button.ghost:hover:not(:disabled) {
 }
 .composer .send-error {
   color: var(--danger);
+}
+
+/* Emoji picker ----------------------------------------------------------- */
+.composer .emoji-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.05s;
+}
+.composer .emoji-toggle:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.composer .emoji-toggle.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.composer .emoji-toggle:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.composer .emoji-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.composer .emoji-popover {
+  position: absolute;
+  left: 1rem;
+  bottom: calc(100% - 0.4rem);
+  z-index: 20;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border-strong);
+}
+/* Theme emoji-picker-element to the Ultra palette (it exposes CSS custom
+   properties; the shadow DOM reads them from this host). */
+.composer .emoji-popover emoji-picker {
+  --background: var(--surface);
+  --border-color: var(--border);
+  --indicator-color: var(--primary);
+  --input-border-color: var(--border-strong);
+  --input-font-color: var(--text);
+  --input-placeholder-color: var(--text-muted);
+  --outline-color: var(--primary);
+  --button-active-background: var(--primary-soft);
+  --button-hover-background: var(--primary-soft);
+  --category-font-color: var(--text-dim);
+  height: 22rem;
+}
+@media (max-width: 480px) {
+  .composer .emoji-popover {
+    left: 0.6rem;
+    right: 0.6rem;
+  }
+  .composer .emoji-popover emoji-picker {
+    width: 100%;
+  }
 }

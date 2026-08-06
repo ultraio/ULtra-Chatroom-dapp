@@ -7,6 +7,7 @@ import {
   byteLength,
   commitFailureReason,
   friendlyChainError,
+  insertAtCaret,
 } from '../chatMath';
 import type { ChatMessage } from '../chatClient';
 import { MAX_MESSAGE_LENGTH } from '../config';
@@ -123,6 +124,45 @@ describe('commitFailureReason (push-success != committed)', () => {
 
   it('flags a partially-signed transaction', () => {
     expect(commitFailureReason({ status: 'success', data: { ...hash, unsignedAuth: ['a@active'] } })).toMatch(/partially signed/i);
+  });
+});
+
+describe('insertAtCaret (emoji picker inserts at the cursor)', () => {
+  it('inserts at the start', () => {
+    expect(insertAtCaret('bc', '😀', 0, 0)).toEqual({ text: '😀bc', caret: '😀'.length });
+  });
+
+  it('inserts in the middle and reports the caret just past the insert', () => {
+    const r = insertAtCaret('ac', '😀', 1, 1);
+    expect(r.text).toBe('a😀c');
+    expect(r.caret).toBe(1 + '😀'.length);
+  });
+
+  it('appends at the end', () => {
+    expect(insertAtCaret('gm', '👍', 2, 2)).toEqual({ text: 'gm👍', caret: 2 + '👍'.length });
+  });
+
+  it('replaces a selected range', () => {
+    // "abcd" with "bc" (indices 1..3) selected, insert 😀 → "a😀d"
+    const r = insertAtCaret('abcd', '😀', 1, 3);
+    expect(r.text).toBe('a😀d');
+    expect(r.caret).toBe(1 + '😀'.length);
+  });
+
+  it('treats a reversed selection (start > end) as a normal range', () => {
+    const r = insertAtCaret('abcd', 'X', 3, 1);
+    expect(r.text).toBe('aXd');
+    expect(r.caret).toBe(2);
+  });
+
+  it('clamps out-of-range indices to the string bounds', () => {
+    expect(insertAtCaret('hi', '!', -5, 99)).toEqual({ text: '!', caret: 1 });
+  });
+
+  it('inserts at the end when the caret is null (input never focused)', () => {
+    const r = insertAtCaret('hi', '😀', null, null);
+    expect(r.text).toBe('hi😀');
+    expect(r.caret).toBe(2 + '😀'.length);
   });
 });
 

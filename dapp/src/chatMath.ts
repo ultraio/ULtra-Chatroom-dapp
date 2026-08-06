@@ -20,6 +20,24 @@ export function byteLength(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
+// Splice `insert` into `text`, replacing the selection [start, end) (as
+// reported by an <input>'s selectionStart/End), and report where the caret
+// should land — just past the inserted text. start/end are null when the input
+// was never focused (append to the end). Kept pure + vitest-pinned so the emoji
+// picker's cursor handling is testable without a DOM.
+export function insertAtCaret(
+  text: string,
+  insert: string,
+  start: number | null,
+  end: number | null,
+): { text: string; caret: number } {
+  const s = start ?? text.length;
+  const e = end ?? text.length;
+  const lo = Math.max(0, Math.min(text.length, Math.min(s, e)));
+  const hi = Math.max(0, Math.min(text.length, Math.max(s, e)));
+  return { text: text.slice(0, lo) + insert + text.slice(hi), caret: lo + insert.length };
+}
+
 export function validateMessage(raw: string): ValidationResult {
   const text = raw.trim();
   if (text.length === 0) return { ok: false, text, error: 'Message cannot be empty.' };

@@ -13,6 +13,8 @@
   "dependencies": {
     "@ultraos/wallet-sdk": "^0.3.2",
     "@wharfkit/antelope": "^1.0.13",
+    "emoji-picker-element": "^1.29.1",
+    "emoji-picker-element-data": "^1.8.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
