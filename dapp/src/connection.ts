@@ -3,6 +3,7 @@
 import { reactive } from 'vue';
 import { APIClient } from '@wharfkit/antelope';
 import * as wallet from './ultraWallet';
+import { commitFailureReason, type SignResult } from './chatMath';
 import { NETWORKS, matchNetwork, type NetworkConfig } from './config';
 
 export interface ConnectionState {
@@ -150,12 +151,12 @@ export async function signAndPush(actions: Array<Record<string, unknown>>): Prom
   state.busy = true;
   try {
     const res = await wallet.signTransaction(actions as any);
-    if (res.status !== 'success') {
-      throw new Error(res.message || (res.code === 4001 ? 'You declined the transaction.' : 'Transaction failed.'));
-    }
-    if ((res.data as any)?.unsignedAuth?.length) {
-      throw new Error('Transaction was only partially signed.');
-    }
+    // A wallet "success" means broadcast-accepted, not committed. Inspect the
+    // execution receipt so an on-chain revert (e.g. the 5s cooldown) surfaces
+    // as an error the caller can show — instead of the message silently
+    // vanishing with the draft already cleared (push-success != committed).
+    const failure = commitFailureReason(res as SignResult);
+    if (failure) throw new Error(failure);
     return (res.data as any).transactionHash as string;
   } finally {
     state.busy = false;

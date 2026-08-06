@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { state, signAndPush } from '../connection';
 import { buildSendMessageAction } from '../chatClient';
-import { validateMessage, friendlyChainError } from '../chatMath';
+import { validateMessage, friendlyChainError, byteLength } from '../chatMath';
 import { MAX_MESSAGE_LENGTH } from '../config';
 
 const emit = defineEmits<{ (e: 'sent'): void }>();
@@ -11,7 +11,9 @@ const draft = ref('');
 const error = ref('');
 const inputEl = ref<HTMLInputElement | null>(null);
 
-const remaining = computed(() => MAX_MESSAGE_LENGTH - draft.value.trim().length);
+// Byte-based to match the contract's memo.size() cap (see byteLength) — the
+// trimmed text is what actually gets sent, so count that.
+const remaining = computed(() => MAX_MESSAGE_LENGTH - byteLength(draft.value.trim()));
 const canSend = computed(
   () => state.connected && !state.busy && remaining.value >= 0 && draft.value.trim().length > 0,
 );

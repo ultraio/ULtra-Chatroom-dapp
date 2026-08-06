@@ -10,11 +10,25 @@ export interface ValidationResult {
   error?: string;
 }
 
+// The contract caps the memo with `check( memo.size() <= 256 )`, and C++
+// std::string::size() counts UTF-8 BYTES, not code points. JS String.length
+// counts UTF-16 code units, so it under-counts every non-ASCII char (an emoji
+// is 2 units but 4 bytes) — validating on .length silently lets a message the
+// chain will reject sail through and revert. Measure the exact same unit the
+// contract does so the mirror can't drift.
+export function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
 export function validateMessage(raw: string): ValidationResult {
   const text = raw.trim();
   if (text.length === 0) return { ok: false, text, error: 'Message cannot be empty.' };
-  if (text.length > MAX_MESSAGE_LENGTH) {
-    return { ok: false, text, error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters).` };
+  if (byteLength(text) > MAX_MESSAGE_LENGTH) {
+    return {
+      ok: false,
+      text,
+      error: `Message too long (max ${MAX_MESSAGE_LENGTH} bytes — emoji and accented characters count as several each).`,
+    };
   }
   return { ok: true, text };
 }
@@ -35,6 +49,53 @@ export function mergeNewMessages(existing: ChatMessage[], fresh: ChatMessage[]):
     additions.push(m);
   }
   return additions.length ? [...existing, ...additions] : existing;
+}
+
+// Shape of the wallet SDK's signTransaction response we actually depend on.
+// `processed` is the on-chain execution receipt — present when the wallet
+// broadcast the tx — and is the ONLY authority on whether the message
+// committed (see commitFailureReason).
+export interface SignResult {
+  status?: string;
+  code?: number;
+  message?: string;
+  data?: {
+    transactionHash?: string;
+    unsignedAuth?: string[];
+    processed?: {
+      receipt?: { status?: string } | null;
+      except?: { message?: string; details?: Array<{ message?: string }> } | null;
+      error_code?: number | null;
+    } | null;
+  };
+}
+
+// Antelope buries the assert text ("...sending too fast, wait 5 seconds...")
+// under except.details[].message, falling back to except.message.
+function exceptText(except: NonNullable<NonNullable<SignResult['data']>['processed']>['except']): string {
+  if (!except) return 'The transaction was rejected on chain.';
+  const detail = except.details?.map((d) => d?.message).filter(Boolean).join('; ');
+  return detail || except.message || 'The transaction was rejected on chain.';
+}
+
+// A wallet "success" only means the transaction was accepted for broadcast —
+// NOT that it committed (push-success != committed). A tx that reverts on
+// chain (e.g. the 5s cooldown assert) still comes back status:'success' with a
+// transactionHash; the failure lives in the execution receipt. Returns a
+// human-facing reason when the tx did not commit, or null when it did. Kept
+// pure + vitest-pinned for the same reason validateMessage is.
+export function commitFailureReason(res: SignResult): string | null {
+  if (res.status !== 'success') {
+    return res.message || (res.code === 4001 ? 'You declined the transaction.' : 'Transaction failed.');
+  }
+  if (res.data?.unsignedAuth?.length) return 'Transaction was only partially signed.';
+  const processed = res.data?.processed;
+  if (processed) {
+    if (processed.except != null || processed.error_code != null) return exceptText(processed.except);
+    const status = processed.receipt?.status;
+    if (status && status !== 'executed') return `The transaction did not execute (status: ${status}).`;
+  }
+  return null;
 }
 
 // Rewrites the raw on-chain check() text (see contracts/chatroom's
