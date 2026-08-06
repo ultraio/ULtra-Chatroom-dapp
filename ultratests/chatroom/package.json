@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "dependencies": {
-        "tsx": "4.7.1",
+        "tsx": "4.20.6",
         "@ultraos/ultratest": "../../../../usr/local/lib/node_modules/@ultraos/ultratest2/src",
         "ultratest-genesis-plugin": "../../../../usr/local/lib/node_modules/@ultraos/ultratest2/src/plugins/native/genesis",
         "ultratest-system-plugin": "../../../../usr/local/lib/node_modules/@ultraos/ultratest2/src/plugins/native/system",
