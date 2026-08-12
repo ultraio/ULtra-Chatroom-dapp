@@ -29,10 +29,32 @@ export default class E2ESetup extends UltraTest {
     return {
       'seed: deploy chatroom1, fund users, post a starter message, re-key to dev key': async () => {
         await systemAPI.createAccountFull({ name: 'chatroom1', giftRam: 5 * 1024 * 1024 }, 'eosio');
+
+        // The /tip path forwards inline, so chatroom1@active needs eosio.code.
+        // Add it while preserving the generated active key (read from the
+        // account); updateauth on `active` requires owner authority.
+        const acct: any = await systemAPI.getAccount('chatroom1');
+        const activeKey = acct.permissions.find((p: any) => p.perm_name === 'active').required_auth.keys[0].key;
+        await ultraAPI.transactOrThrow([{
+          account: 'eosio', name: 'updateauth',
+          authorization: [{ actor: 'chatroom1', permission: 'owner' }],
+          data: {
+            account: 'chatroom1', permission: 'active', parent: 'owner',
+            auth: {
+              threshold: 1,
+              keys: [{ key: activeKey, weight: 1 }],
+              accounts: [{ permission: { actor: 'chatroom1', permission: 'eosio.code' }, weight: 1 }],
+              waits: [],
+            },
+          },
+        }], 'grant eosio.code to chatroom1@active');
+
         await systemAPI.publishContract('chatroom1', '../../contracts/chatroom/build/');
 
-        await ultraAPI.token.transferTokens('ultra.eosio', 'alice', 10);
-        await ultraAPI.token.transferTokens('ultra.eosio', 'bob', 10);
+        // Fund generously so repeated local e2e runs against one keep-alive
+        // chain don't drain the tipper (each tip really moves UOS on chain).
+        await ultraAPI.token.transferTokens('ultra.eosio', 'alice', 1000);
+        await ultraAPI.token.transferTokens('ultra.eosio', 'bob', 1000);
 
         await ultraAPI.token.transferCustomTokens('alice', 'chatroom1', '0.00000001 UOS', 'no messages yet — say something');
 

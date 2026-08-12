@@ -19,7 +19,7 @@ test('connect, send a message, see it in the feed and on chain', async ({ page }
   await expect(page.locator('.topbar .account')).toHaveText('alice');
 
   const text = `e2e message ${Date.now()}`;
-  const composerInput = page.locator('.composer-line input[type="text"]');
+  const composerInput = page.locator('.composer input[type="text"]');
   await composerInput.fill(text);
   await composerInput.press('Enter');
 
@@ -51,16 +51,19 @@ test('a message over the 256-character cap is rejected client-side, never reache
   });
 
   const tooLong = 'x'.repeat(300);
-  const composerInput = page.locator('.composer-line input[type="text"]');
+  const composerInput = page.locator('.composer input[type="text"]');
   await composerInput.fill(tooLong.slice(0, 256)); // input has maxlength=256
   await page.evaluate((v) => {
-    const el = document.querySelector('.composer-line input[type="text"]') as HTMLInputElement;
+    const el = document.querySelector('.composer input[type="text"]') as HTMLInputElement;
     el.value = v;
     el.dispatchEvent(new Event('input'));
   }, tooLong);
+  // Over the byte cap the composer disables Send and flags the counter as over
+  // (the real UX — the counter goes negative/red rather than a toast), so the
+  // message can never be submitted to the chain.
+  await expect(page.locator('.composer .send')).toBeDisabled();
+  await expect(page.locator('.composer .hint .count.over')).toBeVisible();
   await composerInput.press('Enter');
-
-  await expect(page.getByText(/too long/i)).toBeVisible();
 
   const { rows: after } = await chainClient.v1.chain.get_table_rows({
     code: CONTRACT_ACCOUNT,

@@ -123,6 +123,24 @@ export function friendlyChainError(raw: string): string {
   if (raw.includes('sending too fast')) {
     return 'Not so fast, wait at least 5 seconds between messages.';
   }
+  // Tip-path reverts (exact assert strings pinned against contracts/chatroom and
+  // Ultra's eosio.token; see design spec §4.6). The overdrawn-balance revert
+  // comes from the contract's inline forward when the sender is short on UOS.
+  if (raw.includes('overdrawn balance')) {
+    return "You don't have enough UOS to send that tip.";
+  }
+  if (raw.includes('tip recipient does not exist')) {
+    return "That account doesn't exist.";
+  }
+  if (raw.includes('cannot tip yourself')) {
+    return "You can't tip yourself.";
+  }
+  if (raw.includes('cannot tip the room')) {
+    return "You can't tip the room itself.";
+  }
+  if (raw.includes('tip amount does not match')) {
+    return 'Tip could not be verified — please try again.';
+  }
   return raw;
 }
 

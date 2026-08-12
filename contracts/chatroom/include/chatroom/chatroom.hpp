@@ -33,17 +33,24 @@ public:
 private:
    static constexpr symbol UOS_SYM        = symbol( "UOS", 8 );
    static constexpr name   TOKEN_CONTRACT = "eosio.token"_n;
-   // Fixed "postage" — the dapp only ever sends exactly this (see dapp's
-   // POSTAGE_QUANTITY). Rejecting anything else means a future bug that
-   // routes a larger transfer (e.g. a bundled tip action) into this memo
-   // slot fails loudly instead of getting silently stranded here forever —
-   // this contract has no withdraw action, so any accepted amount is
-   // permanent.
+   // Fixed "postage" — a normal message sends exactly this (see dapp's
+   // POSTAGE_QUANTITY). A larger transfer is accepted ONLY on the reserved
+   // "/tip " path (see on_transfer / TIP_PREFIX), where the whole amount is
+   // forwarded to the recipient inline in the same transaction and never
+   // stranded; every other non-postage transfer still fails loudly. This
+   // contract has no withdraw action, so anything it *keeps* is permanent —
+   // the tip path is careful to keep zero.
    static constexpr int64_t POSTAGE_AMOUNT = 1;   // 0.00000001 UOS at 8 decimals
    // No protocol-level memo length limit exists for eosio.token::transfer
    // (verified against the Ultra agent KB, docs 01/03/11) — this cap is our
    // own contract-enforced design choice, not a discovered chain fact.
    static constexpr size_t   MAX_MSG_LEN       = 256;
+   // Reserved command prefix (KB: dapp mirrors this). A memo starting with
+   // "/tip " is forced down the verified-tip path in on_transfer; it can only
+   // be stored if a matching amount was actually forwarded to a real account.
+   // This is what lets the dapp badge "/tip "-prefixed rows as genuine tips
+   // (bounded by a deploy-time id high-water-mark on the client side).
+   static constexpr std::string_view TIP_PREFIX = "/tip ";
 
    // Flood control (our own design choice — not a chain-level protection;
    // Ultra's free-tx scheduler and RAM policy don't stop one account from

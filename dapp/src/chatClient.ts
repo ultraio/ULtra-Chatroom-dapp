@@ -114,3 +114,26 @@ export function buildSendMessageAction(from: string, permission: string, text: s
     },
   ];
 }
+
+/**
+ * A tip is a single transfer of the TIP amount to the contract with a "/tip …"
+ * memo. The contract forwards the whole amount to the recipient and records the
+ * memo as a message — see contracts/chatroom (the dapp never builds the forward
+ * itself; that's the whole point of the contract-verified design). `quantity`
+ * and `memo` come from parseTipCommand so the stated amount matches the transfer.
+ */
+export function buildTipAction(from: string, permission: string, quantity: string, memo: string) {
+  return [
+    {
+      contract: TOKEN_CONTRACT,
+      action: 'transfer',
+      authorization: [{ actor: from, permission }],
+      data: {
+        from,
+        to: CONTRACT_ACCOUNT,
+        quantity,
+        memo,
+      },
+    },
+  ];
+}

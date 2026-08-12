@@ -3,8 +3,9 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import 'emoji-picker-element';
 import emojiDataUrl from 'emoji-picker-element-data/en/emojibase/data.json?url';
 import { state, signAndPush } from '../connection';
-import { buildSendMessageAction } from '../chatClient';
+import { buildSendMessageAction, buildTipAction } from '../chatClient';
 import { validateMessage, friendlyChainError, byteLength, insertAtCaret } from '../chatMath';
+import { isTipCommand, parseTipCommand } from '../tipCommand';
 import { MAX_MESSAGE_LENGTH } from '../config';
 import type { EmojiClickDetail } from '../emoji-picker';
 
@@ -14,9 +15,18 @@ const draft = ref('');
 const error = ref('');
 const inputEl = ref<HTMLInputElement | null>(null);
 
+// A "/tip …" draft is sent as a canonical memo (see tipCommand), not the raw
+// text — so in tip mode count the memo the contract will actually store.
+const tipMode = computed(() => isTipCommand(draft.value));
+const parsedTip = computed(() => (tipMode.value ? parseTipCommand(draft.value, state.account) : null));
+const effectiveText = computed(() => {
+  const p = parsedTip.value;
+  return p && p.ok && p.memo ? p.memo : draft.value.trim();
+});
+
 // Byte-based to match the contract's memo.size() cap (see byteLength) — the
-// trimmed text is what actually gets sent, so count that.
-const remaining = computed(() => MAX_MESSAGE_LENGTH - byteLength(draft.value.trim()));
+// effective text (memo for tips, trimmed draft otherwise) is what gets sent.
+const remaining = computed(() => MAX_MESSAGE_LENGTH - byteLength(effectiveText.value));
 const canSend = computed(
   () => state.connected && !state.busy && remaining.value >= 0 && draft.value.trim().length > 0,
 );
@@ -114,13 +124,24 @@ watch(
 async function send() {
   if (!canSend.value) return;
   error.value = '';
-  const result = validateMessage(draft.value);
-  if (!result.ok) {
-    error.value = result.error ?? 'Invalid message.';
-    return;
+  // Build the actions first so a validation error never clears the draft.
+  let actions;
+  if (isTipCommand(draft.value)) {
+    const tip = parseTipCommand(draft.value, state.account);
+    if (!tip.ok) {
+      error.value = tip.error ?? 'Invalid tip.';
+      return;
+    }
+    actions = buildTipAction(state.account, state.permission, tip.quantity!, tip.memo!);
+  } else {
+    const result = validateMessage(draft.value);
+    if (!result.ok) {
+      error.value = result.error ?? 'Invalid message.';
+      return;
+    }
+    actions = buildSendMessageAction(state.account, state.permission, result.text);
   }
   try {
-    const actions = buildSendMessageAction(state.account, state.permission, result.text);
     await signAndPush(actions);
     draft.value = '';
     closePicker();
@@ -174,7 +195,8 @@ async function send() {
     </form>
     <div class="hint">
       <span v-if="error" class="send-error">{{ error }}</span>
-      <span v-else>Each message is a real transaction on Ultra mainnet.</span>
+      <span v-else-if="tipMode" class="tip-hint">💸 <b>/tip</b> &lt;account&gt; &lt;amount&gt; [note] — sends UOS to the recipient on-chain.</span>
+      <span v-else>Each message is a real transaction on Ultra mainnet. Tip someone with <b>/tip</b>.</span>
       <span v-if="draft" class="count" :class="{ over: remaining < 0 || blocked }">{{ remaining }}</span>
     </div>
   </div>

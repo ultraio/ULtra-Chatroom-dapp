@@ -127,6 +127,25 @@ describe('commitFailureReason (push-success != committed)', () => {
   });
 });
 
+describe('friendlyChainError (tip-path reverts)', () => {
+  it('humanizes an overdrawn-balance revert (insufficient UOS for the tip)', () => {
+    expect(friendlyChainError('assertion failure with message: overdrawn balance')).toMatch(/enough uos/i);
+  });
+  it('humanizes an unknown-recipient revert', () => {
+    expect(friendlyChainError('chatroom: tip recipient does not exist')).toMatch(/doesn't exist/i);
+  });
+  it('humanizes tip-yourself / tip-the-room reverts', () => {
+    expect(friendlyChainError('chatroom: cannot tip yourself')).toMatch(/yourself/i);
+    expect(friendlyChainError('chatroom: cannot tip the room')).toMatch(/room/i);
+  });
+  it('humanizes an amount-mismatch revert', () => {
+    expect(friendlyChainError('chatroom: tip amount does not match the transfer')).toMatch(/could not be verified/i);
+  });
+  it('passes through an unrecognized error unchanged', () => {
+    expect(friendlyChainError('some other chain error')).toBe('some other chain error');
+  });
+});
+
 describe('insertAtCaret (emoji picker inserts at the cursor)', () => {
   it('inserts at the start', () => {
     expect(insertAtCaret('bc', '😀', 0, 0)).toEqual({ text: '😀bc', caret: '😀'.length });

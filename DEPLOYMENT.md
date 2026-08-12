@@ -171,11 +171,19 @@ If a previous `nodeos` is still bound to `:8888`, `pkill -x nodeos` first
 
 The chain seeded in step 3 must still be running for this step.
 
-**One-time setting:** `dapp/src/config.ts`'s `CONTRACT_ACCOUNT` must
-temporarily be `'chatroom1'` (matching the account `e2e_setup.ts` deploys to)
-while testing locally. It ships as the live mainnet account `'1aa2aa3aa4eo'` —
-flip it to `'chatroom1'` before running e2e, and flip it back to
-`'1aa2aa3aa4eo'` afterward (see gotchas below for why this matters).
+**No flip needed anymore.** `dapp/src/config.ts`'s `CONTRACT_ACCOUNT` is now
+DEV-branched (`import.meta.env.DEV ? 'chatroom1' : '1aa2aa3aa4eo'`), like
+`nodeUrls` / `TIP_BADGE_MIN_ID`. The vite **dev** server (which is what e2e and
+local QA use) automatically targets `chatroom1`; the production build always
+ships `'1aa2aa3aa4eo'`. Nothing to edit or revert.
+
+The e2e webserver runs over **plain http** (`E2E_HTTP=1`, set in
+`playwright.config.ts`) so the in-browser feed reads can reach the http chain
+RPC without mixed-content blocking; the mock wallet doesn't need the https
+origin the real extension requires. `e2e_setup.ts` also grants
+`chatroom1@eosio.code` (needed for the /tip inline forward) and funds the test
+accounts with 1000 UOS so repeated runs against one keep-alive chain don't drain
+the tipper.
 
 ```bash
 cd dapp
@@ -252,8 +260,17 @@ in this doc — only the `-u` endpoint and chain ID change.
 2. **Buy RAM** for the account (`cleos push action eosio buyrambytes ...`).
    Size for the wasm/ABI plus room for the table to grow — see "RAM growth is
    unbounded" below for how to think about sizing.
-3. **Deploy** (chatroom has no inline actions, so no `eosio.code` permission
-   is needed):
+3. **Grant `eosio.code`** — the `/tip` path forwards inline, so the contract
+   account's `active` permission must include its own `@eosio.code` authority
+   (this changed with the tip feature; earlier versions had no inline actions):
+   ```bash
+   cleos -u <mainnet-rpc> set account permission <your-account> active \
+     --add-code -p <your-account>@active
+   ```
+   (Or an explicit `updateauth` that keeps the current active key and adds
+   `{ actor: <your-account>, permission: "eosio.code" }` to `accounts`.)
+   Without this, every tip reverts with a missing-authority error on the forward.
+4. **Deploy:**
    ```bash
    cleos -u <mainnet-rpc> set contract <your-account> \
      ./contracts/chatroom/build chatroom.wasm chatroom.abi \
@@ -265,12 +282,22 @@ in this doc — only the `-u` endpoint and chain ID change.
    as `contract-dir` silently misassigns the arguments and fails with a
    misleading `Error 3160010: no abi file found <mangled-path>` that doesn't
    name the real cause.
-4. **Verify:** `cleos get account <your-account>` (check `ram_usage` vs
-   `ram_quota`), then `cleos get table <your-account> <your-account>
-   messages.a` to confirm the table exists and is empty.
-5. **Point the dapp at it:** `dapp/src/config.ts` already sets
-   `CONTRACT_ACCOUNT = '1aa2aa3aa4eo'` (the current live account). Only change
-   this if you deploy to a different account — set it to that account name.
+5. **Verify:** `cleos get account <your-account>` (confirm `active` lists the
+   `eosio.code` authority, and check `ram_usage` vs `ram_quota`), then `cleos
+   get table <your-account> <your-account> messages.a`.
+6. **Capture the tip badge boundary:** immediately after `set contract`, read the
+   current max message id and set `dapp/src/config.ts`'s `TIP_BADGE_MIN_ID`
+   (production branch) to it, then rebuild/redeploy the dapp:
+   ```bash
+   cleos -u <mainnet-rpc> get table <your-account> <your-account> messages.a \
+     --reverse --limit 1     # → its "id" is TIP_BADGE_MIN_ID
+   ```
+   This is what stops any pre-upgrade `/tip …` row (stored by the old contract
+   as plain text, no funds moved) from being badged as a verified tip. Capturing
+   slightly early only under-badges a few genuine early tips — it can never badge
+   a forgery. See the design spec §2.
+7. **Point the dapp at it:** `dapp/src/config.ts`'s production branch already
+   uses `'1aa2aa3aa4eo'`. Only change it if you deploy to a different account.
 
 ## 6. Publish the frontend (Cloudflare Pages)
 
@@ -414,12 +441,12 @@ here so nobody "fixes" them again or reverts them by accident:
 - **`dapp/vite.config.ts`**: `vitest run` was picking up the Playwright spec
   under `tests/e2e/` and crashing (Playwright's `test()` isn't valid inside
   Vitest) — fixed with `test.exclude: ['node_modules/**', 'tests/e2e/**']`.
-- **`dapp/src/config.ts`**'s `CONTRACT_ACCOUNT` is the live mainnet account
-  `'1aa2aa3aa4eo'` — it must be temporarily set to `'chatroom1'` for local e2e
-  runs (step 4) and reverted to `'1aa2aa3aa4eo'` afterward. Leaving it on
-  `'chatroom1'` after testing will cause `eosio.token::transfer` to fail with
-  "to account does not exist" once someone runs the app against mainnet, where
-  `chatroom1` isn't a real account.
+- **`dapp/src/config.ts`**'s `CONTRACT_ACCOUNT` is DEV-branched
+  (`import.meta.env.DEV ? 'chatroom1' : '1aa2aa3aa4eo'`): the dev server / e2e
+  target `chatroom1`, the production build targets the live mainnet account.
+  There is no longer a manual flip to remember (the old "flip to chatroom1 then
+  back" footgun — which used to cause `eosio.token::transfer` "to account does
+  not exist" on mainnet if left on `chatroom1` — is gone).
 - **Step 5's `set contract` command** originally passed the `.wasm` and `.abi`
   files' full paths as separate positional args, which cleos silently
   misinterpreted (the file path was taken as `contract-dir`, mangling the
