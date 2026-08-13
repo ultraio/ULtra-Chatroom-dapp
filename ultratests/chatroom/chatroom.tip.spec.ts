@@ -127,6 +127,30 @@ export default class Test extends UltraTest {
           'tip amount has a trailing decimal point');
       },
 
+      'leading decimal point reverts (missing integer part)': async () => {
+        await assertAsyncThrow(
+          ultraAPI.token.transferCustomTokens('erin', CONTRACT, '5.00000000 UOS', '/tip bob .5 x'),
+          'tip amount is missing its integer part');
+      },
+
+      'more than one decimal point reverts': async () => {
+        await assertAsyncThrow(
+          ultraAPI.token.transferCustomTokens('erin', CONTRACT, '5.00000000 UOS', '/tip bob 5.5.5 x'),
+          'tip amount has more than one decimal point');
+      },
+
+      'missing amount reverts': async () => {
+        await assertAsyncThrow(
+          ultraAPI.token.transferCustomTokens('erin', CONTRACT, '5.00000000 UOS', '/tip bob'),
+          'tip amount is missing');
+      },
+
+      'prefix only (no receiver) reverts as a nonexistent recipient': async () => {
+        await assertAsyncThrow(
+          ultraAPI.token.transferCustomTokens('erin', CONTRACT, '5.00000000 UOS', '/tip '),
+          'tip recipient does not exist');
+      },
+
       'unknown recipient reverts (no funds move, no row)': async () => {
         const before = (await messages()).length;
         await assertAsyncThrow(

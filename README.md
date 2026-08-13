@@ -36,6 +36,47 @@ dapp/tests/e2e/         Playwright E2E scaffold (drives the seeded keep-alive ch
    block time / ~1s Savanna finality) using `lower_bound` on the primary key
    so each poll only fetches the new tail, not a full re-scan.
 
+## Tipping (`/tip`)
+
+Typing `/tip <account> <amount> [note]` sends UOS to another account **and**
+posts the line to the room, in one atomic transaction. It is **contract-verified**
+so a "tipped X to Y" line can never be faked:
+
+1. The dapp sends **one** `eosio.token::transfer` of `<amount>` UOS to the
+   `chatroom` contract with the memo `/tip <account> <amount> [note]` (no bundled
+   client-side transfer to the recipient).
+2. The contract reserves the `/tip ` memo prefix. On that path it checks the
+   amount stated in the memo equals the amount it actually received, then
+   **forwards the whole amount to the recipient with an inline
+   `eosio.token::transfer`**, and only then stores the memo as a normal message.
+   Any failure (bad recipient, wrong amount, insufficient balance) reverts the
+   entire transaction, so a stored `/tip …` row always means the funds moved.
+3. The feed badges verified tips. Because the old (pre-tip) contract stored any
+   memo verbatim, the dapp only badges `/tip …` rows whose id is above a
+   deploy-time high-water-mark (`TIP_BADGE_MIN_ID` in `config.ts`), so a
+   pre-upgrade look-alike line can't masquerade as a real tip.
+
+See the design in `docs/superpowers/specs/2026-08-12-chatroom-tip-command-design.md`
+and the security review in `contracts/chatroom/SECURITY_AUDIT.md`.
+
+> ### ⚠️ Deploying the tip feature needs `eosio.code` — read before redeploying
+>
+> Because step 2 makes the **contract itself perform an inline
+> `eosio.token::transfer`** (forwarding the tip), the contract account can only
+> authorize that inline action if its `active` permission carries its own
+> `@eosio.code` authority. **This is new** — the original message-only contract
+> had no inline actions and needed no special permission.
+>
+> Before (or with) `set contract` on the live account, grant it:
+> ```bash
+> cleos -u <mainnet-rpc> set account permission <contract-account> active \
+>   --add-code -p <contract-account>@active
+> ```
+> Without this, **every tip reverts** with a missing-authority error on the
+> forward (normal messages keep working). The full ordered runbook — including
+> capturing `TIP_BADGE_MIN_ID` right after deploy — is in `DEPLOYMENT.md` §5.
+> Local e2e already grants it automatically in `ultratests/chatroom/e2e_setup.ts`.
+
 ## Design decisions not dictated by the chain
 
 The brief called out two things explicitly to confirm rather than guess, and
