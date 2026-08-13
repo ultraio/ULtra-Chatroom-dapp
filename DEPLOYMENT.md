@@ -208,6 +208,22 @@ npm test        # vitest
 
 ## 5. Deploy to mainnet
 
+> ### Deploy order — contract first, THEN the dapp (§6). Do not reverse.
+>
+> The tip feature couples the two: **1)** grant `eosio.code` → **2)** `set
+> contract` → **3)** capture `TIP_BADGE_MIN_ID` from the live table → **4)** build
+> & publish the dapp (§6) with that value. The dapp bundle bakes in
+> `TIP_BADGE_MIN_ID`, which only *exists* once the new contract is live, so the
+> dapp build genuinely depends on the contract being deployed first.
+>
+> Shipping the dapp first breaks tips: a `/tip` sends a >postage transfer with a
+> `/tip …` memo, which the *old* contract rejects (`quantity.amount ==
+> POSTAGE_AMOUNT`) and has no `eosio.code`/forward for — every tip reverts until
+> the contract catches up. **Normal messages keep working throughout** the
+> contract swap (backward-compatible), so there's no outage window; the only
+> negligible edge is that once the new contract is live, a literal `"/tip …"`
+> typed as a *chat message* in the still-old dapp fails to send until §6 ships.
+
 **Correction (2026-07-28, per KB `08` rev. 2026-07-28):** earlier versions of
 this doc said mainnet deployment requires a Pro Wallet specifically plus
 KYC/KYB to lift a 10 KB pre-KYC RAM cap, and named that the pipeline's real
