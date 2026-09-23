@@ -11,7 +11,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@ultraos/wallet-sdk": "^0.3.2",
+    "@ultraos/wallet-sdk": "^0.6.1",
     "@wharfkit/antelope": "^1.0.13",
     "emoji-picker-element": "^1.29.1",
     "emoji-picker-element-data": "^1.8.0",
